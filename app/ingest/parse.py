@@ -2,13 +2,16 @@
 
 from __future__ import annotations
 
+import importlib.util
 import sqlite3
 from collections.abc import Callable
 from pathlib import Path
 
 import pymupdf
+import torch
 from docling.datamodel.base_models import InputFormat
 from docling.datamodel.pipeline_options import PdfPipelineOptions
+from docling.datamodel.settings import settings as docling_settings
 from docling.document_converter import DocumentConverter, PdfFormatOption
 from docling_core.types.doc.document import DoclingDocument
 from docling_core.types.doc.items.node import DocItem
@@ -136,12 +139,37 @@ def _to_block(
 # Shell
 
 
+def can_compile_models() -> bool:
+    """Whether torch.compile can actually produce kernels on this machine.
+
+    Docling compiles its layout model by default, which is worth having: it is
+    the slowest stage by a distance. On a CUDA device that compilation goes
+    through Inductor, which generates Triton kernels, and Triton ships no
+    official Windows build. The result on a Windows GPU box is that every batch
+    raises TritonMissing and the parse produces nothing at all.
+
+    CPU and MPS are unaffected, because Inductor falls back to its own C++
+    backend there and never reaches Triton.
+
+    Returns:
+        True when compilation is safe to leave on.
+    """
+    if not torch.cuda.is_available():
+        return True
+    return importlib.util.find_spec("triton") is not None
+
+
 def build_converter() -> DocumentConverter:
     """Create the converter used for every batch.
 
     Returns:
         A converter configured for digital PDFs with table structure detection.
     """
+    # Read when the options object below is constructed, so this has to happen
+    # first. Leaving compilation on where it cannot work does not degrade to
+    # something slower, it fails outright on every page.
+    docling_settings.inference.compile_torch_models = can_compile_models()
+
     options = PdfPipelineOptions()
     options.do_ocr = False
     options.do_table_structure = True
