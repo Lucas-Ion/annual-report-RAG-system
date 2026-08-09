@@ -1,0 +1,28 @@
+# Python
+__pycache__/
+*.py[cod]
+.venv/
+.pytest_cache/
+.ruff_cache/
+
+# Environment
+.env
+
+# Source PDFs are committed on purpose, so there is no rule for them here.
+# They are public documents, and shipping them means a reviewer can delete the
+# database and rebuild the whole thing from source rather than taking the
+# seeded data on trust. Commit them once: git keeps a full copy of a binary
+# file for every version it ever sees.
+
+# The seeded database gets committed exactly once, at the end, when it is
+# final, for the same reason. Until then it stays out of the history, because
+# it is rebuilt constantly during development.
+data/rag.db
+data/rag.db-wal
+data/rag.db-shm
+
+# Throwaway parser output, spikes, comparisons
+scratch/
+
+# OS
+.DS_Store
