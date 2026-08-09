@@ -319,7 +319,13 @@ def main() -> int:
         if resumed:
             print(f"  resuming after page {resumed} of {pages}")
 
-        stages.start(document.id, Stage.PARSE)
+        # Each of these gets its own transaction. Repositories never commit on
+        # their own, and without one here the final finish() of the run is
+        # followed by nothing but conn.close(), which throws it away. The
+        # document would then look unparsed forever and be redone on the next
+        # run, having quietly done all the work.
+        with transaction(conn):
+            stages.start(document.id, Stage.PARSE)
         try:
             written = parse_document(
                 conn,
@@ -330,11 +336,13 @@ def main() -> int:
                 on_batch=batch_reporter(pages_done),
             )
         except Exception as exc:  # one bad report must not abandon the others
-            stages.fail(document.id, Stage.PARSE, repr(exc))
+            with transaction(conn):
+                stages.fail(document.id, Stage.PARSE, repr(exc))
             print(f"  FAILED: {exc!r}")
             failures += 1
         else:
-            stages.finish(document.id, Stage.PARSE)
+            with transaction(conn):
+                stages.finish(document.id, Stage.PARSE)
             stored = len(blocks.read_for_document(document.id))
             print(f"  done, {written} blocks this run, {stored} stored in total")
         pages_done += pages
