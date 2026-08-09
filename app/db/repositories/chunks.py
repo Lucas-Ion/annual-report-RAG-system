@@ -40,6 +40,26 @@ _JOINED_COLUMNS = ", ".join(f"c.{name}" for name in _FIELDS)
 # what somebody typing a question actually meant.
 _WORD = re.compile(r"\w+", re.UNICODE)
 
+# Dropped from keyword queries. Not an optimisation: with terms joined by OR,
+# leaving these in actively breaks the search. Asking "How much did Shell spend
+# on climate change adaptation in 2025?" with the full word list returns an ABN
+# AMRO section titled "Snack or save?" as the top hit, because it happens to
+# contain a lot of "how", "much" and "did". Removing them puts the right
+# company's disclosures on top.
+#
+# Deliberately short, and question words rather than a general English stop
+# list. An aggressive list starts discarding terms that carry real meaning in
+# financial reporting, and a term wrongly dropped costs more than a common word
+# wrongly kept.
+_STOPWORDS = frozenset(
+    """
+    a about an and any are as at be been by can did do does for from had has
+    have how i in into is it its many much of on or our that the their there
+    these this to was we were what when where which who why will with would you
+    your
+    """.split()
+)
+
 
 def to_chunk(row: sqlite3.Row) -> Chunk:
     """Build a Chunk from a database row.
@@ -74,6 +94,10 @@ def to_match_expression(text: str) -> str:
     job BM25 exists for: it weights rare words like "adaptation" far above
     common ones like "much".
 
+    Question words are stripped first, for the reason set out on _STOPWORDS. A
+    query made entirely of them falls back to using them anyway, since a search
+    for something is more useful than a search for nothing.
+
     Args:
         text: Whatever the user typed.
 
@@ -82,7 +106,8 @@ def to_match_expression(text: str) -> str:
         searchable words at all.
     """
     terms = _WORD.findall(text)
-    return " OR ".join(f'"{term}"' for term in terms)
+    meaningful = [term for term in terms if term.casefold() not in _STOPWORDS]
+    return " OR ".join(f'"{term}"' for term in meaningful or terms)
 
 
 class ChunkRepository(Repository[Chunk, int]):

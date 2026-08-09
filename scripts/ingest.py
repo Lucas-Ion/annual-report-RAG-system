@@ -33,89 +33,17 @@ to it.
 from __future__ import annotations
 
 import argparse
-import hashlib
-import re
 import sys
 import time
-from collections.abc import Callable
 from pathlib import Path
 
-from app.db.connection import init_db, transaction
-from app.db.models import Document, Stage
-from app.db.repositories import BlockRepository, DocumentRepository, StageRunRepository
-from app.ingest.parse import (
-    DEFAULT_BATCH_SIZE,
-    build_converter,
-    page_count,
-    parse_document,
-)
-
-# Filler that appears in report filenames and tells you nothing about who
-# published them. Stripped before what remains is treated as a company name.
-_NOISE = re.compile(
-    r"\b(annual|integrated|financial|statements?|report|jaarverslag|final|en|nl)\b",
-    re.IGNORECASE,
-)
-_YEAR = re.compile(r"(?:19|20)\d{2}")
-
-# Casing cannot be recovered by rule. "abn-amro" could reasonably be Abn Amro
-# or ABN AMRO, and only one of those is the bank's name. Known issuers are
-# corrected here and everything else falls back to the heuristic.
-#
-# This table exists because seeding in bulk from a folder is a convenience for
-# getting five reports in. The real answer is the upload form, which asks for
-# the company and the year rather than guessing them from a filename.
-CANONICAL = {
-    "abn amro": "ABN AMRO",
-    "asml": "ASML",
-    "cm": "CM",
-    "heineken": "Heineken N.V.",
-    "heineken nv": "Heineken N.V.",
-    # Kept so the distinction is on the record. Heineken Holding N.V. is a
-    # separate filer with no operations and, in its own words, no employees, so
-    # its report is the wrong one for this system.
-    "heineken holding nv": "Heineken Holding N.V.",
-    "shell": "Shell",
-}
-
-
-# Core
-
-
-def infer_year(stem: str) -> int | None:
-    """Pull a reporting year out of a filename.
-
-    Args:
-        stem: Filename without its extension.
-
-    Returns:
-        The last four digit year in the name, or None if there is not one.
-        The last rather than the first, because a name like
-        "2024_2025_annual_report" is a report for the later year.
-    """
-    found = _YEAR.findall(stem)
-    return int(found[-1]) if found else None
-
-
-def infer_company(stem: str) -> str:
-    """Pull a company name out of a filename.
-
-    Words already in uppercase are left alone, so a filename that spells ASML
-    correctly keeps it. Downloaded reports are usually lowercased throughout,
-    though, so the result is then checked against CANONICAL to recover the
-    casing no rule can infer.
-
-    Args:
-        stem: Filename without its extension.
-
-    Returns:
-        A best guess at the company name. Always check it with --dry-run before
-        a long run, since this is pattern matching on filenames and no more.
-    """
-    words = [w for w in re.split(r"[\s_\-]+", _YEAR.sub(" ", stem)) if w]
-    words = [w for w in words if not _NOISE.fullmatch(w)]
-    guess = " ".join(w if w.isupper() else w.capitalize() for w in words)
-    return CANONICAL.get(guess.casefold(), guess)
+from app.config import load_environment
+from app.db.connection import init_db
+from app.db.models import Stage
+from app.ingest.naming import infer_company, infer_year
+from app.ingest.parse import DEFAULT_BATCH_SIZE, build_converter, page_count
+from app.ingest.pipeline import DEFAULT_STAGES, ingest
+from app.providers import BGEEmbeddings, ClaudeProvider
 
 
 def format_duration(seconds: float) -> str:
@@ -173,33 +101,16 @@ def collect_pdfs(paths: list[Path]) -> list[Path]:
     return found
 
 
-def file_hash(pdf: Path) -> str:
-    """Fingerprint a file by its contents.
-
-    Read in chunks rather than all at once. These are 15MB each today, which
-    would be fine to slurp, but nothing about this function should care how big
-    a report gets.
-
-    Args:
-        pdf: Path to the file.
-
-    Returns:
-        Hex sha256 of the bytes.
-    """
-    digest = hashlib.sha256()
-    with pdf.open("rb") as handle:
-        for block in iter(lambda: handle.read(1 << 20), b""):
-            digest.update(block)
-    return digest.hexdigest()
+# Shell
 
 
 def main() -> int:
-    """Parse every PDF given on the command line.
+    """Ingest every PDF given on the command line.
 
     Returns:
-        0 if every document finished, 1 if any of them failed. A failure in one
-        report does not abandon the rest: losing two finished hours because the
-        fourth file is corrupt would be a poor trade.
+        0 if every document finished, 1 if any of them failed. A failure in
+        one report does not abandon the rest: losing two finished hours
+        because the fourth file is corrupt would be a poor trade.
     """
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument(
@@ -211,12 +122,18 @@ def main() -> int:
     )
     parser.add_argument("--batch-size", type=int, default=DEFAULT_BATCH_SIZE)
     parser.add_argument(
-        "--dry-run",
-        action="store_true",
-        help="show what would be ingested and stop",
+        "--stages",
+        nargs="+",
+        choices=[stage.value for stage in DEFAULT_STAGES],
+        default=[stage.value for stage in DEFAULT_STAGES],
+        help="which stages to run, default all of them",
+    )
+    parser.add_argument(
+        "--dry-run", action="store_true", help="show what would be ingested and stop"
     )
     args = parser.parse_args()
 
+    load_environment()
     pdfs = collect_pdfs(args.paths)
     if (args.company or args.year) and len(pdfs) > 1:
         sys.exit("--company and --year apply to one report, so pass one file")
@@ -241,111 +158,45 @@ def main() -> int:
     for pdf, company, year, pages in plan:
         print(f"{pdf.name[:39]:<40}{company[:15]:<16}{year:>6}{pages:>8}")
     print("-" * 70)
-    print(f"{'':<62}{total_pages:>8} pages total\n")
+    print(f"{'':<62}{total_pages:>8} pages total")
+    print(f"\nstages: {', '.join(args.stages)}\n")
 
     if args.dry_run:
         print("dry run, nothing written")
         return 0
 
+    stages = [Stage(name) for name in args.stages]
     conn = init_db()
-    documents = DocumentRepository(conn)
-    blocks = BlockRepository(conn)
-    stages = StageRunRepository(conn)
 
-    # One converter for the whole run. Building it loads the layout model,
-    # which costs around 21 seconds, and doing that per document would waste
-    # most of two minutes on a five report run.
-    print("loading the layout model, this takes a moment ...")
-    converter = build_converter()
+    # Both of these load large models, so they are built once for the whole
+    # run and only if a stage actually needs them. Constructing the embedding
+    # provider is free; it loads on first use.
+    converter = build_converter() if Stage.PARSE in stages else None
+    embeddings = BGEEmbeddings() if {Stage.EMBED, Stage.EXTRACT} & set(stages) else None
+    model = ClaudeProvider() if Stage.EXTRACT in stages else None
 
     started = time.perf_counter()
-    pages_done = 0
     failures = 0
-
-    def batch_reporter(pages_before: int) -> Callable[[int, int, int], None]:
-        """Build the per batch progress callback for one document.
-
-        A factory rather than a closure written inside the loop, because a
-        closure would capture the running page total by reference. That happens
-        to work today, since the callback is only called before the total moves
-        on, but it is the kind of thing that breaks silently the moment the
-        loop is rearranged.
-
-        Args:
-            pages_before: Pages already accounted for by earlier documents.
-
-        Returns:
-            A callback matching parse_document's on_batch.
-        """
-
-        def report(first: int, last: int, count: int) -> None:
-            elapsed = time.perf_counter() - started
-            done = pages_before + last
-            rate = elapsed / done if done else 0.0
-            remaining = (total_pages - done) * rate
-            print(
-                f"  pages {first:>4}-{last:<4} {count:>4} blocks   "
-                f"{done}/{total_pages} pages   "
-                f"{rate:.1f}s/page   about {format_duration(remaining)} left"
-            )
-
-        return report
-
-    for pdf, company, year, pages in plan:
-        digest = file_hash(pdf)
-        document = documents.read_by_hash(digest)
-        if document is None:
-            with transaction(conn):
-                document = documents.create(
-                    Document(
-                        filename=pdf.name,
-                        file_hash=digest,
-                        company=company,
-                        year=year,
-                        page_count=pages,
-                    )
-                )
-            print(f"\n{pdf.name}: registered as document {document.id}")
-        else:
-            print(f"\n{pdf.name}: already registered as document {document.id}")
-
-        assert document.id is not None
-        if stages.is_done(document.id, Stage.PARSE):
-            print("  already parsed, skipping")
-            pages_done += pages
-            continue
-
-        resumed = blocks.last_parsed_page(document.id)
-        if resumed:
-            print(f"  resuming after page {resumed} of {pages}")
-
-        # Each of these gets its own transaction. Repositories never commit on
-        # their own, and without one here the final finish() of the run is
-        # followed by nothing but conn.close(), which throws it away. The
-        # document would then look unparsed forever and be redone on the next
-        # run, having quietly done all the work.
-        with transaction(conn):
-            stages.start(document.id, Stage.PARSE)
+    for pdf, company, year, _pages in plan:
+        print(f"\n{pdf.name}")
         try:
-            written = parse_document(
+            ingest(
                 conn,
-                document,
                 pdf,
+                company=company,
+                year=year,
                 converter=converter,
-                batch_size=args.batch_size,
-                on_batch=batch_reporter(pages_done),
+                embeddings=embeddings,
+                model=model,
+                stages=stages,
+                parse_batch_size=args.batch_size,
+                on_progress=lambda stage, message: print(
+                    f"  {stage.value:<8}{message}"
+                ),
             )
         except Exception as exc:  # one bad report must not abandon the others
-            with transaction(conn):
-                stages.fail(document.id, Stage.PARSE, repr(exc))
             print(f"  FAILED: {exc!r}")
             failures += 1
-        else:
-            with transaction(conn):
-                stages.finish(document.id, Stage.PARSE)
-            stored = len(blocks.read_for_document(document.id))
-            print(f"  done, {written} blocks this run, {stored} stored in total")
-        pages_done += pages
 
     conn.close()
     print(f"\nfinished in {format_duration(time.perf_counter() - started)}")

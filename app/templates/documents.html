@@ -1,0 +1,107 @@
+{% extends "base.html" %}
+{% set nav = 'documents' %}
+{% block content %}
+<h1>Indexed reports</h1>
+<p class="lede">
+  Five annual reports, parsed, chunked and indexed. Everything below was
+  extracted when each report was ingested, so it is read straight from the
+  database and needs no model call to display.
+</p>
+
+<form class="card upload" id="upload" enctype="multipart/form-data">
+  <header>
+    <h3>Add a report</h3>
+    <p>Drop in a PDF and it is parsed, chunked, embedded and read for
+       datapoints. Expect roughly 45 minutes for a 400 page report on a laptop,
+       or under a minute on a machine with a GPU.</p>
+  </header>
+  <section>
+    <input class="input" type="file" id="pdf" name="file" accept="application/pdf" required>
+    <div class="two">
+      <input class="input" type="text" id="company" name="company"
+             placeholder="Company (optional)">
+      <input class="input" type="number" id="year" name="year"
+             placeholder="Year (optional)" min="1990" max="2100">
+    </div>
+    <p class="hint">Left blank, both are read from the filename.</p>
+    <div id="upload-status" hidden></div>
+  </section>
+  <footer>
+    <button class="btn" data-variant="primary" data-size="sm" type="submit" id="upload-go">
+      Ingest
+    </button>
+  </footer>
+</form>
+
+<div class="cards">
+  {% for row in rows %}
+  <article class="card">
+    <header>
+      <h3>
+        <a href="/documents/{{ row.document.id }}" title="{{ row.document.company }}">
+          {% if row.logo %}
+            <span class="logo card-mark"><img src="{{ row.logo }}" alt="{{ row.document.company }}"></span>
+          {% else %}{{ row.document.company }}{% endif %}
+        </a>
+      </h3>
+      <p>{{ row.document.company }} &middot; Annual Report {{ row.document.year }}
+         &middot; {{ row.document.page_count }} pages &middot; {{ row.chunks }} chunks</p>
+    </header>
+
+    <section>
+      {% for field in fields %}
+        {% set found = row.facts.get(field.key) %}
+        {% if found %}
+        <div class="field-block">
+          <p class="eyebrow">{{ field.label }}</p>
+          {% if field.multiple %}
+            <ul class="bullets">
+              {% for fact in found[:3] %}
+                <li>{{ fact.value_raw }}
+                    <a class="badge page-link" data-variant="secondary" target="_blank" rel="noopener"
+                       href="/documents/{{ row.document.id }}/pdf#page={{ fact.page_no }}">p{{ fact.page_no }}</a></li>
+              {% endfor %}
+            </ul>
+            {% if found|length > 3 %}
+              <p class="muted">and {{ found|length - 3 }} more</p>
+            {% endif %}
+          {% else %}
+            <p class="headline">
+              {{ found[0].value_raw }}
+              {% if found[0].unit %}
+                <span class="badge" data-variant="outline">{{ found[0].unit.split('(')[0].strip() }}</span>
+              {% endif %}
+              <a class="badge page-link" data-variant="secondary" target="_blank" rel="noopener"
+                 href="/documents/{{ row.document.id }}/pdf#page={{ found[0].page_no }}">p{{ found[0].page_no }}</a>
+            </p>
+          {% endif %}
+        </div>
+        {% endif %}
+      {% endfor %}
+    </section>
+
+    <footer>
+      <a class="btn" data-variant="outline" data-size="sm" href="/documents/{{ row.document.id }}">All datapoints</a>
+      {% if row.pdf %}
+        <a class="btn" data-variant="ghost" data-size="sm" target="_blank" rel="noopener"
+           href="/documents/{{ row.document.id }}/pdf">Open PDF</a>
+      {% endif %}
+      <button class="btn remove" data-variant="ghost" data-size="icon"
+              data-id="{{ row.document.id }}"
+              data-company="{{ row.document.company }}"
+              title="Remove {{ row.document.company }} from the index"
+              aria-label="Remove {{ row.document.company }} from the index">
+        <svg xmlns="http://www.w3.org/2000/svg" width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M3 6h18M8 6V4a1 1 0 0 1 1-1h6a1 1 0 0 1 1 1v2m3 0v14a2 2 0 0 1-2 2H7a2 2 0 0 1-2-2V6M10 11v6M14 11v6"/></svg>
+      </button>
+    </footer>
+  </article>
+  {% else %}
+  <div class="alert">
+    <h2>Nothing ingested yet</h2>
+    <section>Run <code>uv run python -m scripts.ingest data/pdfs</code> to build the index.</section>
+  </div>
+  {% endfor %}
+</div>
+{% endblock %}
+
+{% block scripts %}<script src="/static/js/upload.js"></script>{% endblock %}

@@ -1,0 +1,52 @@
+{% extends "base.html" %}
+{% set nav = 'documents' %}
+{% block title %}{{ document.company }} &middot; Annual report RAG{% endblock %}
+{% block content %}
+<nav class="crumbs"><a href="/">Reports</a> <span>/</span> {{ document.company }}</nav>
+
+<h1 class="titled">
+  {% if logo %}<span class="logo lg"><img src="{{ logo }}" alt="{{ document.company }}"></span>{% endif %}
+  <span>{{ document.company }}</span>
+</h1>
+<p class="lede">
+  Annual Report {{ document.year }} &middot; {{ document.page_count }} pages
+  &middot; {{ chunks }} indexed chunks
+</p>
+{% if pdf %}
+<p class="actions">
+  <a class="btn" data-variant="outline" data-size="sm" target="_blank" rel="noopener"
+     href="/documents/{{ document.id }}/pdf">Open {{ document.filename }}</a>
+  <button class="btn remove" data-variant="ghost" data-size="sm"
+          data-id="{{ document.id }}" data-company="{{ document.company }}"
+          data-redirect="/">
+    <svg xmlns="http://www.w3.org/2000/svg" width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M3 6h18M8 6V4a1 1 0 0 1 1-1h6a1 1 0 0 1 1 1v2m3 0v14a2 2 0 0 1-2 2H7a2 2 0 0 1-2-2V6M10 11v6M14 11v6"/></svg> Remove from index
+  </button>
+</p>
+{% endif %}
+
+{% for key, facts in grouped.items() %}
+<section class="block">
+  <h2>{{ fields[key].label }}
+      <span class="badge" data-variant="secondary">{{ facts|length }}</span></h2>
+  <ul class="facts">
+    {% for fact in facts %}
+      {% include "partials/fact.html" %}
+    {% endfor %}
+  </ul>
+</section>
+{% else %}
+<div class="alert">
+  <h2>No datapoints extracted</h2>
+  <section>Run the extract stage with an <code>ANTHROPIC_API_KEY</code> set.</section>
+</div>
+{% endfor %}
+
+<p class="note">
+  Every value above carries a quotation that was checked against the indexed
+  source text before it was stored. Extractions whose quotation could not be
+  found were discarded rather than shown. Click any page badge to open the
+  report at that page and read the quotation in place.
+</p>
+{% endblock %}
+
+{% block scripts %}<script src="/static/js/upload.js"></script>{% endblock %}

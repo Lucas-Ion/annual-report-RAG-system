@@ -12,6 +12,13 @@ dependencies = [
     # dependencies, so a transitive package cannot be redirected.
     "torch>=2.7.0",
     "torchvision>=0.22.0",
+    "sentence-transformers>=3.0.0",
+    "anthropic>=0.40.0",
+    "python-dotenv>=1.0.0",
+    "fastapi>=0.115.0",
+    "uvicorn[standard]>=0.32.0",
+    "jinja2>=3.1.0",
+    "python-multipart>=0.0.9",
 ]
 
 # Tools needed to work on the project but not to run it. Installed by
@@ -19,6 +26,8 @@ dependencies = [
 [dependency-groups]
 dev = [
     "pyright>=1.1.390",
+    "pytest>=8.0",
+    "pytest-cov>=6.0",
     "ruff>=0.8.0",
 ]
 
@@ -58,6 +67,14 @@ venv = ".venv"
 pythonVersion = "3.13"
 typeCheckingMode = "standard"
 include = ["app", "scripts", "tests"]
+
+[tool.pytest.ini_options]
+# The repository root on the import path, so `import app` works without the
+# project being installed. It is an application, not a package, so there is
+# nothing to install.
+pythonpath = ["."]
+testpaths = ["tests"]
+addopts = "-q --strict-markers"
 
 [tool.ruff]
 target-version = "py313"

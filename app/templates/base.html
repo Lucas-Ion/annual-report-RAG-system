@@ -1,0 +1,50 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>{% block title %}Annual report RAG{% endblock %}</title>
+  {# Basecoat first, then our own layer. Order matters: anything emitting a
+     Tailwind reset after Basecoat would undo its component defaults. #}
+  <link rel="stylesheet" href="/static/css/basecoat.css">
+  <link rel="stylesheet" href="/static/css/app.css">
+  <link rel="icon" href="data:,">
+  {# Inline and before any paint, so a dark-mode visitor never sees a white
+     flash. Basecoat keys dark mode off html.dark rather than a media query,
+     which is what makes an explicit toggle possible at all. #}
+  <script>
+    (() => {
+      const saved = localStorage.getItem("theme");
+      const dark = saved ? saved === "dark"
+                         : matchMedia("(prefers-color-scheme: dark)").matches;
+      document.documentElement.classList.toggle("dark", dark);
+    })();
+  </script>
+</head>
+<body>
+  <header class="masthead">
+    <a class="brand" href="/">Annual Report RAG System</span></a>
+    <nav>
+      <a class="btn" data-variant="{{ 'secondary' if nav == 'documents' else 'ghost' }}" data-size="sm" href="/">Reports</a>
+      <a class="btn" data-variant="{{ 'secondary' if nav == 'compare' else 'ghost' }}" data-size="sm" href="/compare">Compare</a>
+      <a class="btn" data-variant="{{ 'secondary' if nav == 'chat' else 'ghost' }}" data-size="sm" href="/chat">Ask</a>
+      <button class="btn" data-variant="ghost" data-size="icon" id="theme" aria-label="Toggle dark mode" title="Toggle dark mode">
+        <svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" viewBox="0 0 24 24"
+             fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round">
+          <circle cx="12" cy="12" r="4"/><path d="M12 2v2M12 20v2M5 5l1.5 1.5M17.5 17.5L19 19M2 12h2M20 12h2M5 19l1.5-1.5M17.5 6.5L19 5"/>
+        </svg>
+      </button>
+    </nav>
+  </header>
+  <main class="{% block main_class %}wrap{% endblock %}">
+    {% block content %}{% endblock %}
+  </main>
+  <script>
+    document.getElementById("theme").addEventListener("click", () => {
+      const dark = document.documentElement.classList.toggle("dark");
+      localStorage.setItem("theme", dark ? "dark" : "light");
+    });
+  </script>
+  {% block scripts %}{% endblock %}
+</body>
+</html>
