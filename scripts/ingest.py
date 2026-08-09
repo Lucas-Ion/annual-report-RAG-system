@@ -1,6 +1,10 @@
 """Register annual reports and parse them into blocks.
 
-    uv run python -m scripts.ingest data/pdfs/*.pdf
+    uv run python -m scripts.ingest data/pdfs
+
+Takes directories or individual files. Prefer a directory: PowerShell does not
+expand *.pdf into a list of arguments the way a Unix shell does, so a glob that
+works on a Mac silently arrives as the literal string "*.pdf" on Windows.
 
 Run it with -m rather than by path. Invoking the file directly puts scripts/ on
 the import path instead of the repository root, and `import app` then fails.
@@ -134,6 +138,41 @@ def format_duration(seconds: float) -> str:
 # Shell
 
 
+def collect_pdfs(paths: list[Path]) -> list[Path]:
+    """Expand command line arguments into a sorted list of PDF files.
+
+    A directory contributes every PDF directly inside it. A file is taken as
+    given, which keeps `--company` and `--year` usable for a single report.
+
+    Sorted so that a run is reproducible: directory listing order is whatever
+    the filesystem feels like, and it differs between macOS and Windows, which
+    would quietly change the order documents are ingested in.
+
+    Args:
+        paths: Files and directories from the command line.
+
+    Returns:
+        Every PDF to ingest, in a stable order.
+
+    Raises:
+        SystemExit: If a path does not exist, or a directory holds no PDFs.
+            Both are almost always a typo, and finding out now beats finding
+            out after the layout model has loaded.
+    """
+    found: list[Path] = []
+    for path in paths:
+        if path.is_dir():
+            inside = sorted(path.glob("*.pdf"))
+            if not inside:
+                sys.exit(f"no PDFs in {path}")
+            found.extend(inside)
+        elif path.is_file():
+            found.append(path)
+        else:
+            sys.exit(f"no such file or directory: {path}")
+    return found
+
+
 def file_hash(pdf: Path) -> str:
     """Fingerprint a file by its contents.
 
@@ -163,7 +202,9 @@ def main() -> int:
         fourth file is corrupt would be a poor trade.
     """
     parser = argparse.ArgumentParser(description=__doc__)
-    parser.add_argument("pdfs", nargs="+", type=Path)
+    parser.add_argument(
+        "paths", nargs="+", type=Path, help="PDF files, or directories of them"
+    )
     parser.add_argument("--company", help="override the name read from the filename")
     parser.add_argument(
         "--year", type=int, help="override the year read from the filename"
@@ -176,15 +217,14 @@ def main() -> int:
     )
     args = parser.parse_args()
 
-    if (args.company or args.year) and len(args.pdfs) > 1:
-        sys.exit("--company and --year apply to one file, so pass one file")
+    pdfs = collect_pdfs(args.paths)
+    if (args.company or args.year) and len(pdfs) > 1:
+        sys.exit("--company and --year apply to one report, so pass one file")
 
     # Work out what everything is before touching the database, so a
     # misunderstood filename is caught in seconds rather than after an hour.
     plan = []
-    for pdf in args.pdfs:
-        if not pdf.is_file():
-            sys.exit(f"no such file: {pdf}")
+    for pdf in pdfs:
         company = args.company or infer_company(pdf.stem)
         year = args.year or infer_year(pdf.stem)
         if not company or year is None:
