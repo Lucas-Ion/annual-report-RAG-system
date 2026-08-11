@@ -30,21 +30,6 @@ uv run uvicorn app.main:app --reload
 
 The application is then at `http://127.0.0.1:8000`.
 
-### If using an internal laptop on the ABN Network
-
-Internal the packages need to come from NEXUS rather than PyPI, so you need to skip `uv`
-entirely. I generated `requirements.txt` from the same lockfile, so pip installs
-the identical pinned versions using whatever index the machine already has
-configured:
-
-```bash
-python3 -m venv .venv
-source .venv/bin/activate
-pip install -r requirements.txt
-python -m uvicorn app.main:app --reload
-```
-
-
 ### The database ships populated
 
 `data/rag.db` is committed, along with the source PDFs in `data/pdfs`. No
