@@ -31,9 +31,11 @@ def connect(path: Path | None = None) -> sqlite3.Connection:
 
     conn = sqlite3.connect(path)
     conn.row_factory = sqlite3.Row
-    conn.enable_load_extension(True)
-    sqlite_vec.load(conn)
-    conn.enable_load_extension(False)
+
+    if hasattr(conn, "enable_load_extension"):
+        conn.enable_load_extension(True)
+        sqlite_vec.load(conn)
+        conn.enable_load_extension(False)
 
     _apply_pragmas(conn)
     return conn
