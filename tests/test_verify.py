@@ -1,4 +1,4 @@
-"""The verification rules, which are what every displayed figure rests on."""
+"""Testing the verification rules, which are what every displayed figure rests on."""
 
 from __future__ import annotations
 
@@ -7,7 +7,6 @@ from app.verify import find_source, locate_page, normalise_for_match
 
 
 def chunk(page_start: int, page_end: int, text: str, document_id: int = 7) -> Chunk:
-    """Build a chunk for a test."""
     return Chunk(
         id=1,
         document_id=document_id,
@@ -21,7 +20,6 @@ def chunk(page_start: int, page_end: int, text: str, document_id: int = 7) -> Ch
 
 
 def block(page_no: int, text: str, document_id: int = 7) -> Block:
-    """Build a block for a test."""
     return Block(
         document_id=document_id, seq=0, page_no=page_no, label="text", text=text
     )
@@ -64,11 +62,6 @@ class TestFindSource:
 
 
 class TestLocatePage:
-    """The bug this exists for: a chunk spanning a page break.
-
-    Stored page numbers are links that open the PDF, so landing a reader one
-    page early undermines the exact thing the citation exists to prove.
-    """
 
     spanning = chunk(4, 5, "text from page four\n\nthe figure was 12,345")
     blocks = [block(4, "text from page four"), block(5, "the figure was 12,345")]

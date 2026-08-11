@@ -1,33 +1,21 @@
-/* Streaming chat.
- *
- * No framework. The whole job is: post a question, read server-sent events off
- * the response as they arrive, and render three kinds of thing. That is about
+/* Streaming chat which
+ * posts a question, read server-sent events off the response as they arrive
  * a hundred lines by hand and nothing else on the page needs JavaScript at all.
- *
- * Read with fetch and a ReadableStream rather than EventSource, because
- * EventSource can only issue GET requests and the question belongs in a body.
  */
 
 const thread = document.getElementById("thread");
 const form = document.getElementById("composer");
 const box = document.getElementById("question");
 const send = document.getElementById("send");
-const scope = document.getElementById("scope");
 
 let conversationId = thread.dataset.conversation || null;
 let busy = false;
-/* Kept between events so the citation renderer can map a marker number back to
-   the source it came from, and therefore to a page in a PDF. */
 let lastSources = [];
 
 const escapeHtml = (text) =>
   text.replace(/[&<>"']/g, (c) =>
     ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;", "'": "&#39;" })[c]);
 
-/* Answers arrive as plain text with citation markers in them. Rendering is
- * deliberately minimal: **bold**, and markers turned into badges. Anything
- * more is a markdown parser, which is a dependency and an XSS surface for very
- * little gain on text this short. */
 function render(text, citations) {
   const byQuote = new Map((citations || []).map((c) => [c.quote, c]));
   return escapeHtml(text)
@@ -39,8 +27,6 @@ function render(text, citations) {
         ?? (found ? { document_id: found.document_id } : null);
       const page = found ? found.page : source ? source.page_start : null;
       const title = quote ? `p${page ?? "?"} — ${quote}` : `source ${n}`;
-      /* A verified citation links straight to the page it was checked
-       * against, so a reader can confirm the quotation rather than trust it. */
       if (source && page) {
         return `<a class="cite ${ok ? "" : "unverified"}" title="${title}" target="_blank"
                    rel="noopener" href="/documents/${source.document_id}/pdf#page=${page}">${n}</a>`;
@@ -49,9 +35,7 @@ function render(text, citations) {
     });
 }
 
-/* One row per source. Kept tight on purpose: the excerpts are whole chunks and
- * printing them in full turns a two paragraph answer into a wall. The snippet
- * is clamped to three lines by CSS, which fades rather than cutting mid-glyph. */
+
 function sourceRow(source, index) {
   const page = source.page_start ?? source.page;
   const link = source.document_id
@@ -72,13 +56,49 @@ function sourceRow(source, index) {
     </li>`;
 }
 
-function sourcesBlock(sources, label = "sources used") {
+function sourcesBlock(sources, label = "sources used", seconds = null) {
   if (!sources || !sources.length) return "";
   const items = sources.map((s, i) => sourceRow(s, s.n ?? i + 1)).join("");
+  const took = seconds === null ? "" : ` · ${seconds.toFixed(1)}s`;
   return `<details class="sources">
-            <summary>${sources.length} ${label}</summary>
+            <summary>${sources.length} ${label}${took}</summary>
             <ul>${items}</ul>
           </details>`;
+}
+
+
+function createLoader(label) {
+  const element = document.createElement("span");
+  element.className = "loading";
+  element.setAttribute("role", "status");
+  element.setAttribute("aria-live", "polite");
+  element.innerHTML = `
+    <span class="pixels" aria-hidden="true">${"<i></i>".repeat(9)}</span>
+    <span class="loading-label">${escapeHtml(label)}</span>
+    <span class="loading-time">0.0s</span>`;
+
+  const time = element.querySelector(".loading-time");
+  const started = performance.now();
+  const tick = () => { time.textContent = format(performance.now() - started); };
+  const timer = setInterval(tick, 100);
+
+  return {
+    element,
+    setLabel(next) {
+      element.querySelector(".loading-label").textContent = next;
+    },
+
+    stop() {
+      clearInterval(timer);
+      return (performance.now() - started) / 1000;
+    },
+  };
+}
+
+function format(ms) {
+  const seconds = ms / 1000;
+  if (seconds < 60) return `${seconds.toFixed(1)}s`;
+  return `${Math.floor(seconds / 60)}m ${(seconds % 60).toFixed(1)}s`;
 }
 
 function addTurn(role, html) {
@@ -97,11 +117,15 @@ async function ask(question) {
   document.querySelector(".welcome")?.remove();
 
   addTurn("user", escapeHtml(question));
-  const answer = addTurn("assistant", '<span class="caret"></span>');
+  const answer = addTurn("assistant", "");
   const bubble = answer.querySelector(".bubble");
+
+  const loader = createLoader("Searching the reports");
+  bubble.appendChild(loader.element);
 
   let text = "";
   let sources = [];
+  let elapsed = null;
 
   try {
     const response = await fetch("/api/chat", {
@@ -110,11 +134,11 @@ async function ask(question) {
       body: JSON.stringify({
         question,
         conversation_id: conversationId ? Number(conversationId) : null,
-        document_id: scope.value ? Number(scope.value) : null,
       }),
     });
 
     if (!response.ok) {
+      loader.stop();
       const detail = await response.json().catch(() => ({}));
       bubble.innerHTML = `<div class="alert" data-variant="destructive">${escapeHtml(detail.detail || response.statusText)}</div>`;
       return;
@@ -124,8 +148,7 @@ async function ask(question) {
     const decoder = new TextDecoder();
     let buffer = "";
 
-    /* SSE frames are separated by a blank line and can be split across reads,
-     * so whatever is left after the last complete frame stays in the buffer. */
+
     while (true) {
       const { done, value } = await reader.read();
       if (done) break;
@@ -145,23 +168,33 @@ async function ask(question) {
           thread.dataset.conversation = conversationId;
           sources = data.sources;
           lastSources = data.sources;
+
+          loader.setLabel(`Reading ${sources.length} excerpts`);
         } else if (name === "token") {
+
+          if (elapsed === null) elapsed = loader.stop();
           text += data;
           bubble.innerHTML = render(text, []) + '<span class="caret"></span>';
           thread.scrollTop = thread.scrollHeight;
         } else if (name === "citations") {
-          bubble.innerHTML = render(text, data) + sourcesBlock(sources);
+          if (elapsed === null) elapsed = loader.stop();
+          bubble.innerHTML =
+            render(text, data) + sourcesBlock(sources, "sources used", elapsed);
         } else if (name === "error") {
+          loader.stop();
           bubble.innerHTML = `<div class="alert" data-variant="destructive">${escapeHtml(data.message)}</div>`;
         }
       }
     }
     if (bubble.querySelector(".caret")) {
-      bubble.innerHTML = render(text, []) + sourcesBlock(sources);
+      bubble.innerHTML =
+        render(text, []) + sourcesBlock(sources, "sources used", elapsed);
     }
   } catch (error) {
     bubble.innerHTML = `<div class="alert" data-variant="destructive">${escapeHtml(String(error))}</div>`;
   } finally {
+
+    loader.stop();
     busy = false;
     send.disabled = false;
     box.focus();
@@ -176,7 +209,7 @@ form.addEventListener("submit", (event) => {
   ask(question);
 });
 
-/* Enter sends, shift+enter breaks the line. */
+
 box.addEventListener("keydown", (event) => {
   if (event.key === "Enter" && !event.shiftKey) {
     event.preventDefault();
@@ -192,11 +225,7 @@ box.addEventListener("input", () => {
 document.querySelectorAll(".suggest").forEach((button) =>
   button.addEventListener("click", () => ask(button.textContent.trim())));
 
-/* Reopening a conversation.
- *
- * The stored message is the answer exactly as written, markers and all, so it
- * has to go through the same renderer a live answer does. Rendering it raw was
- * the reason a reopened thread showed bare "[3: ...]" text and no sources. */
+
 async function restore(id) {
   const response = await fetch(`/api/conversations/${id}`);
   if (!response.ok) return;
@@ -209,8 +238,7 @@ async function restore(id) {
     }
     const citations = message.citations ?? [];
     const turn = addTurn("assistant", render(message.content, citations));
-    /* Only the citations survive in the database, not every excerpt that was
-     * retrieved, so a reopened thread lists what the answer actually cited. */
+
     const verified = citations.filter((c) => c.verified);
     if (verified.length) {
       turn.querySelector(".bubble").innerHTML +=
@@ -226,10 +254,6 @@ thread.scrollTop = thread.scrollHeight;
 box.focus();
 
 
-/* Renaming a conversation.
- *
- * Inline rather than a prompt dialog: the title is right there and swapping it
- * for an input is less disruptive than a modal for a three word edit. */
 function startRename(item) {
   const link = item.querySelector("a");
   if (item.querySelector("input")) return;
@@ -266,4 +290,38 @@ document.querySelectorAll(".thread .rename").forEach((button) =>
   button.addEventListener("click", (event) => {
     event.preventDefault();
     startRename(button.closest(".thread"));
+  }));
+
+
+async function removeThread(button) {
+  const item = button.closest(".thread");
+  const title = button.dataset.title || "this conversation";
+
+  const confirmed = await confirmAction({
+    title: `Delete "${title}"?`,
+    body: "The questions, the answers and their citations are removed. This "
+        + "cannot be undone.",
+  });
+  if (!confirmed) return;
+
+  button.disabled = true;
+  const response = await fetch(`/api/conversations/${item.dataset.id}`, {
+    method: "DELETE",
+  });
+  if (!response.ok) {
+    button.disabled = false;
+    return;
+  }
+
+  if (String(conversationId) === item.dataset.id) {
+    window.location.href = "/chat";
+    return;
+  }
+  item.remove();
+}
+
+document.querySelectorAll(".thread .remove-thread").forEach((button) =>
+  button.addEventListener("click", (event) => {
+    event.preventDefault();
+    removeThread(button);
   }));

@@ -1,4 +1,5 @@
 {% extends "base.html" %}
+{% from "partials/macros.html" import page_link %}
 {% set nav = 'documents' %}
 {% block content %}
 <h1>Indexed reports</h1>
@@ -12,8 +13,8 @@
   <header>
     <h3>Add a report</h3>
     <p>Drop in a PDF and it is parsed, chunked, embedded and read for
-       datapoints. Expect roughly 45 minutes for a 400 page report on a laptop,
-       or under a minute on a machine with a GPU.</p>
+       datapoints. Expect roughly 5-10 minutes for a 400 page report on a regular laptop,
+       or under a minute on a machine with a powerful GPU.</p>
   </header>
   <section>
     <input class="input" type="file" id="pdf" name="file" accept="application/pdf" required>
@@ -57,9 +58,7 @@
           {% if field.multiple %}
             <ul class="bullets">
               {% for fact in found[:3] %}
-                <li>{{ fact.value_raw }}
-                    <a class="badge page-link" data-variant="secondary" target="_blank" rel="noopener"
-                       href="/documents/{{ row.document.id }}/pdf#page={{ fact.page_no }}">p{{ fact.page_no }}</a></li>
+                <li>{{ fact.value_raw }} {{ page_link(row.document.id, fact.page_no) }}</li>
               {% endfor %}
             </ul>
             {% if found|length > 3 %}
@@ -71,8 +70,7 @@
               {% if found[0].unit %}
                 <span class="badge" data-variant="outline">{{ found[0].unit.split('(')[0].strip() }}</span>
               {% endif %}
-              <a class="badge page-link" data-variant="secondary" target="_blank" rel="noopener"
-                 href="/documents/{{ row.document.id }}/pdf#page={{ found[0].page_no }}">p{{ found[0].page_no }}</a>
+              {{ page_link(row.document.id, found[0].page_no) }}
             </p>
           {% endif %}
         </div>
@@ -98,10 +96,10 @@
   {% else %}
   <div class="alert">
     <h2>Nothing ingested yet</h2>
-    <section>Run <code>uv run python -m scripts.ingest data/pdfs</code> to build the index.</section>
+    <section>Upload a report above to build the index.</section>
   </div>
   {% endfor %}
 </div>
 {% endblock %}
 
-{% block scripts %}<script src="/static/js/upload.js"></script>{% endblock %}
+{% block scripts %}<script src="{{ asset('js/upload.js') }}"></script>{% endblock %}

@@ -1,29 +1,3 @@
-/* Layout and theme. Basecoat owns every component.
- *
- * The standalone Basecoat bundle ships the component classes (btn, card,
- * badge, table, select, textarea) but no Tailwind utilities, so there is no
- * `flex` or `gap-4` to reach for. That turns out to be a clean division: this
- * file is page structure, the palette, and the handful of things a component
- * library has no opinion about, such as a citation badge inside streamed prose.
- */
-
-/* Palette
- *
- * Three brand colours, each given one job rather than sprinkled around:
- *
- *   #073647  deep petrol   ink, primary, and the dark mode ground
- *   #57C785  green         accent, focus rings, and a verified citation
- *   #EDDD53  yellow        low confidence, and nothing else
- *
- * Tying the green and the yellow to meanings the application already has is
- * what stops this being decoration. A yellow badge on this page always says
- * the same thing: the model was not sure.
- *
- * These override Basecoat's tokens, so they have to out-specify its own .dark
- * block, which is why the dark set is :root.dark rather than .dark. Equal
- * specificity plus later source order would otherwise leave light mode winning
- * even with the class set. */
-
 :root {
   --background: #f6faf8;
   --foreground: #073647;
@@ -70,13 +44,6 @@
   --ring: #57c785;
 }
 
-/* The ground.
- *
- * Fixed rather than scrolling, and kept faint: it sits behind body text, so
- * anything stronger trades legibility for decoration. Three soft pools, one
- * per brand colour, placed off the corners so the page reads as lit rather
- * than patterned. */
-
 body::before {
   content: "";
   position: fixed;
@@ -107,8 +74,6 @@ body {
 a { color: inherit; }
 code { font-family: var(--font-mono); font-size: .88em; }
 
-/* Masthead */
-
 .masthead {
   position: sticky; top: 0; z-index: 20;
   display: flex; align-items: center; gap: .4rem;
@@ -117,13 +82,8 @@ code { font-family: var(--font-mono); font-size: .88em; }
   backdrop-filter: saturate(180%) blur(12px);
   border-bottom: 1px solid var(--border);
 }
-.brand {
-  display: flex; align-items: center; gap: .5rem;
-  font-weight: 600; letter-spacing: -.015em; text-decoration: none;
-}
+.home { gap: .45rem; font-weight: 500; }
 .masthead nav { display: flex; align-items: center; gap: .25rem; margin-left: auto; }
-
-/* Page frame */
 
 .wrap { max-width: 1080px; margin: 0 auto; padding: 2.5rem 1.5rem 5rem; }
 
@@ -140,16 +100,9 @@ h2 { font-size: 1.15rem; letter-spacing: -.01em; margin: 0 0 .8rem;
 .crumbs { color: var(--muted-foreground); font-size: .87rem; margin-bottom: 1rem; }
 .crumbs span { margin: 0 .4rem; }
 .block { margin-bottom: 3rem; }
-/* Horizontal scrolling.
- *
- * width:100% makes the table exactly as wide as the scroller, so a row whose
- * text runs past the edge keeps scrolling while its bottom border stops dead
- * at the fold. max-content sizes the table to its widest row instead, and the
- * min-width keeps a narrow table filling the space. */
-.scroll { overflow-x: auto; }
-.scroll .table { width: max-content; min-width: 100%; }
 
-/* Report cards */
+.scroll { overflow-x: auto; }
+.scroll .table th, .scroll .table td { overflow-wrap: anywhere; }
 
 .cards { display: grid; gap: 1.1rem; grid-template-columns: repeat(auto-fill, minmax(320px, 1fr)); }
 .cards .card,
@@ -164,8 +117,6 @@ h2 { font-size: 1.15rem; letter-spacing: -.01em; margin: 0 0 .8rem;
 .bullets { margin: 0; padding-left: 1.05rem; font-size: .9rem;
            color: var(--muted-foreground); }
 .bullets li { margin-bottom: .3rem; }
-
-/* Facts */
 
 .facts { list-style: none; margin: 0; padding: 0; display: grid; gap: .7rem; }
 .fact { padding: 1rem 1.1rem; border: 1px solid var(--border);
@@ -186,10 +137,8 @@ h2 { font-size: 1.15rem; letter-spacing: -.01em; margin: 0 0 .8rem;
   white-space: pre-wrap; overflow-wrap: anywhere;
 }
 td.num { font-weight: 600; white-space: nowrap; }
-td.src { color: var(--muted-foreground); font-size: .8rem; max-width: 44ch;
-         font-family: var(--font-mono); }
-
-/* Chat */
+td.src { color: var(--muted-foreground); font-size: .8rem;
+         font-family: var(--font-mono); line-height: 1.5; }
 
 .chat-layout {
   display: grid; grid-template-columns: 258px minmax(0, 1fr);
@@ -210,13 +159,15 @@ td.src { color: var(--muted-foreground); font-size: .8rem; max-width: 44ch;
   text-overflow: ellipsis; white-space: nowrap; display: block;
   text-align: left; line-height: 2rem; padding-right: 2rem;
 }
-/* Hidden until the row is reached for, so twenty threads are not twenty
-   buttons competing with their own titles. */
-.threads .rename { position: absolute; right: .15rem; opacity: 0;
-                   color: var(--muted-foreground); }
-.threads .thread:hover .rename,
-.threads .rename:focus-visible { opacity: 1; }
+
+.thread-actions { position: absolute; right: .15rem; display: flex; gap: .1rem;
+                  opacity: 0; transition: opacity .12s ease; }
+.threads .thread:hover .thread-actions,
+.thread-actions:focus-within { opacity: 1; }
+.threads .rename { color: var(--muted-foreground); }
 .threads .rename:hover { color: var(--foreground); }
+
+.threads .thread > .btn:first-child { padding-right: 3.6rem; }
 .rename-field { width: 100%; height: 2rem; font-size: .87rem; }
 
 .thread { overflow-y: auto; padding: .25rem .25rem 1rem; scroll-behavior: smooth; }
@@ -237,8 +188,6 @@ td.src { color: var(--muted-foreground); font-size: .8rem; max-width: 44ch;
 .turn.assistant .bubble { max-width: 68ch; white-space: pre-wrap; overflow-wrap: anywhere; }
 .turn.assistant .bubble strong { font-weight: 600; }
 
-/* A citation inside streamed prose. Nothing in a component library covers
-   this, because it only exists because answers are checked. */
 .cite {
   display: inline-block; min-width: 1.4em; height: 1.4em; margin: 0 .12em;
   background: color-mix(in srgb, var(--brand-green) 20%, transparent);
@@ -270,9 +219,6 @@ td.src { color: var(--muted-foreground); font-size: .8rem; max-width: 44ch;
 .source-section { color: var(--muted-foreground); overflow: hidden;
                   text-overflow: ellipsis; white-space: nowrap; max-width: 26ch; }
 
-/* Three lines, then a fade. Clipping with overflow:hidden alone cut text mid
-   line with nothing to say it had been cut, which read as a broken layout
-   rather than as a preview. */
 .source .snippet {
   margin: .45rem 0 0;
   color: var(--muted-foreground);
@@ -301,18 +247,6 @@ td.src { color: var(--muted-foreground); font-size: .8rem; max-width: 44ch;
   .masthead { padding: .7rem 1rem; }
 }
 
-/* The wordmark is the one place all three colours appear together, which is
-   enough to establish them without repeating the gradient anywhere else. */
-.brand-mark {
-  background: linear-gradient(105deg, var(--brand-petrol), var(--brand-green) 55%, var(--brand-yellow));
-  color: #fff;
-  border-color: transparent;
-  letter-spacing: .02em;
-}
-:root.dark .brand-mark { color: var(--brand-petrol); }
-
-/* A page number that opens the report at that page. Underlined on hover only,
-   so a table of figures does not turn into a wall of links. */
 a.page-link { text-decoration: none; }
 a.page-link:hover { border-color: var(--brand-green); text-decoration: none; }
 td .page-link { color: var(--muted-foreground); }
@@ -324,25 +258,8 @@ a.cite { text-decoration: none; }
 a.cite:hover { text-decoration: none;
                background: color-mix(in srgb, var(--brand-green) 34%, transparent); }
 
-/* Logos
- *
- * Five real brand marks with wildly different proportions: Shell is square,
- * Heineken is nearly six times wider than tall. Forcing them into one box
- * would distort them, so each sits at a shared height and takes whatever width
- * it needs, capped so a wordmark cannot run away with the layout. That is the
- * only treatment that leaves all five looking like themselves.
- *
- * Dark mode needs the tile. ASML's mark is #255398 and CM's is #101E1E, and
- * both effectively disappear against a dark petrol ground. Rather than
- * recolour somebody's trademark, they get a light chip to sit on, which is
- * legible, reversible and leaves the brand intact. */
-
 .logo { display: inline-flex; align-items: center; justify-content: center; height: 34px; }
-/* height rather than max-height, deliberately. An SVG carrying only a viewBox
-   has an aspect ratio but no intrinsic size, and `width: auto` against
-   `max-height` then resolves to nothing and the logo silently disappears. A
-   definite height always resolves, and max-width plus object-fit keeps a wide
-   wordmark inside its slot without distorting it. */
+
 .logo img { height: 100%; max-width: 148px; width: auto; object-fit: contain; display: block; }
 .logo.lg { height: 44px; }
 .logo.lg img { max-width: 200px; }
@@ -351,9 +268,6 @@ a.cite:hover { text-decoration: none;
 .logo.xs { height: 13px; margin-right: .4rem; vertical-align: -1px; }
 .logo.xs img { max-width: 58px; }
 
-/* Square marks read as smaller than wordmarks at the same height, because a
-   wordmark spends its width. Shell and CM get a little more room so all five
-   carry similar visual weight on a card. */
 .logo.card-mark { height: 44px; }
 .logo.card-mark img { max-width: 150px; }
 
@@ -366,12 +280,6 @@ a.cite:hover { text-decoration: none;
 :root.dark .logo.sm { border-radius: 5px; padding: 3px 6px; }
 :root.dark .logo.xs { border-radius: 4px; padding: 2px 4px; }
 
-/* The card header is now the logo, so the company name moves to the meta line
-   and the heading needs no type styling of its own.
-   
-   The fixed-height slot is what makes the grid look composed: five logos of
-   five different shapes all occupy the same block, so every card's data starts
-   on the same line. */
 .cards .card > header { text-align: center; padding-bottom: 1.1rem;
                         border-bottom: 1px solid var(--border); }
 .cards .card > header h3 {
@@ -388,15 +296,9 @@ h1.titled { display: flex; align-items: center; gap: .9rem; flex-wrap: wrap; }
 td .company { white-space: nowrap; font-weight: 500; }
 td .company:hover { text-decoration: underline; }
 
-/* A hairline where the company changes, so a long table still reads as blocks
-   even though the name is only printed once per block. */
 .table tr.group-start:not(:first-child) td { border-top: 1px solid var(--border); }
 .table tr:not(.group-start) td:first-child { border-bottom-color: transparent; }
 
-/* Upload */
-
-/* A sibling of the card grid rather than a member of it, so it inherits no
-   gap and needs its own. */
 .upload { margin-bottom: 2rem; }
 .upload > header { text-align: left; }
 .upload > header h3 { display: block; min-height: 0; font-size: 1.05rem;
@@ -425,7 +327,6 @@ td .company:hover { text-decoration: underline; }
   35%           { transform: translateY(-4px); opacity: 1; }
 }
 
-/* Anyone who has asked not to be moved gets a fade instead. */
 @media (prefers-reduced-motion: reduce) {
   .dots i { animation: fade 1.4s ease-in-out infinite; }
   @keyframes fade { 0%, 100% { opacity: .3; } 50% { opacity: 1; } }
@@ -440,9 +341,75 @@ td .company:hover { text-decoration: underline; }
 .bar span { display: block; height: 100%; background: var(--brand-green);
             transition: width .4s ease; }
 
-/* Removing a report is destructive, so the control stays quiet until reached
-   for, then turns the colour of the thing it does. */
-.card > footer .remove { margin-left: auto; color: var(--muted-foreground); }
-.remove:hover { color: var(--destructive); }
-.remove svg { display: block; }
-.actions .remove { color: var(--muted-foreground); gap: .4rem; }
+.remove, .remove-thread { color: var(--muted-foreground); }
+.remove:hover, .remove:focus-visible,
+.remove-thread:hover, .remove-thread:focus-visible { color: var(--destructive); }
+.remove svg, .remove-thread svg { display: block; }
+.card > footer .remove { margin-left: auto; }
+.actions .remove { gap: .4rem; }
+
+.loading { display: inline-flex; align-items: center; gap: .6rem; }
+
+.pixels { display: grid; grid-template-columns: repeat(3, 4px); gap: 1.5px; }
+.pixels i {
+  width: 4px; height: 4px; border-radius: 1px;
+  background: var(--foreground); opacity: .15;
+  animation: pixel-on 650ms ease-in-out infinite;
+}
+
+.pixels i:nth-child(1) { animation-delay:  90ms; }
+.pixels i:nth-child(2) { animation-delay: 180ms; }
+.pixels i:nth-child(3) { animation-delay: 270ms; }
+.pixels i:nth-child(4) { animation-delay:   0ms; }
+.pixels i:nth-child(5) { animation-delay:  90ms; }
+.pixels i:nth-child(6) { animation-delay: 180ms; }
+.pixels i:nth-child(7) { animation-delay:  90ms; }
+.pixels i:nth-child(8) { animation-delay: 180ms; }
+.pixels i:nth-child(9) { animation-delay: 270ms; }
+
+.pixels.dots i { border-radius: 50%; }
+
+.loading-label {
+  font-size: .87rem; font-weight: 500;
+  color: transparent;
+  background-image: linear-gradient(90deg,
+    var(--muted-foreground) 35%, var(--foreground) 50%, var(--muted-foreground) 65%);
+  background-size: 200% 100%;
+  -webkit-background-clip: text;
+  background-clip: text;
+  animation: shimmer-text 1.4s linear infinite;
+}
+
+.loading-time {
+  font-family: var(--font-mono); font-size: .78rem;
+  color: var(--muted-foreground); font-variant-numeric: tabular-nums;
+}
+
+@keyframes pixel-on {
+  0%, 100% { opacity: .12; }
+  50%      { opacity: 1; }
+}
+
+@keyframes shimmer-text {
+  0%   { background-position: 200% 0; }
+  100% { background-position: -200% 0; }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .pixels i { animation: none; opacity: .3; }
+  .loading-label { animation: none; color: var(--muted-foreground);
+                   background-image: none; -webkit-text-fill-color: currentColor; }
+}
+
+#upload-status .loading { margin-bottom: .3rem; }
+
+a.page-link { display: inline-flex; align-items: center; gap: .22em; }
+a.page-link svg { opacity: .55; flex: none; }
+a.page-link:hover svg { opacity: 1; }
+td .page-link { font-weight: 600; }
+
+.dialog::backdrop { background: rgb(0 0 0 / .45); backdrop-filter: blur(2px); }
+.dialog { border: 0; background: none; padding: 0; margin: auto; max-width: 30rem; }
+.dialog [data-description] { color: var(--muted-foreground); font-size: .9rem;
+                             line-height: 1.55; }
+.dialog > article > footer { display: flex; justify-content: flex-end; gap: .5rem; }

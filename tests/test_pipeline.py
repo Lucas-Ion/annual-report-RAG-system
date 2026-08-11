@@ -1,10 +1,4 @@
-"""The pipeline and the embed stage.
-
-Both are orchestration, and orchestration is where "it already did that" bugs
-live. The property under test throughout is that running twice costs nothing
-the second time, because that is what makes an interrupted 45 minute ingest
-survivable.
-"""
+"""The pipeline and the embed stage."""
 
 from __future__ import annotations
 
@@ -40,8 +34,6 @@ class TestEmbedDocument:
         assert chunks.read_without_embeddings(ident(document)) == []
 
     def test_running_again_does_nothing(self, conn, seeded, embeddings):
-        """The resume property. Embedding calls cost time and, with a hosted
-        provider, money, so a rerun must only pick up what is missing."""
         assert embed_document(conn, seeded, embeddings) == 0
 
     def test_only_the_missing_chunks_are_embedded(self, conn, seeded, embeddings):
@@ -68,8 +60,6 @@ class TestEmbedDocument:
     def test_commits_in_batches_so_an_interruption_keeps_what_it_did(
         self, conn, document, embeddings
     ):
-        """Half of a long job is worth keeping. The batch that fails is lost;
-        everything committed before it is not."""
         chunks = ChunkRepository(conn)
         with transaction(conn):
             chunks.create_all(
@@ -126,8 +116,6 @@ class TestRegisterDocument:
     def test_the_same_contents_are_recognised_under_a_different_name(
         self, conn, make_pdf, tmp_path
     ):
-        """Identity is the hash of the bytes, not the filename. That is what
-        makes re-ingesting safe and what stops a rename costing 45 minutes."""
         first = make_pdf("acme-2025.pdf")
         renamed = tmp_path / "acme annual report (1).pdf"
         renamed.write_bytes(first.read_bytes())
@@ -147,7 +135,6 @@ class TestRegisterDocument:
 class TestIngest:
     @staticmethod
     def pdf(tmp_path):
-        """A file that is a valid PDF only as far as page counting."""
         import pymupdf
 
         path = tmp_path / "acme-2025.pdf"
@@ -159,9 +146,6 @@ class TestIngest:
         return path
 
     def test_finished_stages_are_skipped(self, conn, make_pdf, embeddings, model):
-        """The property the whole design turns on. Marking every stage done and
-        running again must do no work at all, which is what makes calling this
-        on a fully ingested corpus a fast no-op."""
         pdf = make_pdf()
         document, _ = register_document(conn, pdf, "Acme", 2025)
         runs = StageRunRepository(conn)
@@ -185,7 +169,6 @@ class TestIngest:
     def test_embedding_is_skipped_rather_than_failing_without_a_provider(
         self, conn, make_pdf, model
     ):
-        """So a caller can parse and chunk without waiting on a 2GB download."""
         pdf = make_pdf()
         seen: list[tuple[str, str]] = []
         ingest(
@@ -201,7 +184,6 @@ class TestIngest:
         assert ("embed", "no embedding provider, skipping") in seen
 
     def test_extraction_is_skipped_without_a_model(self, conn, make_pdf, embeddings):
-        """So the whole pipeline runs end to end with no API key and no spend."""
         pdf = make_pdf()
         seen: list[tuple[str, str]] = []
         ingest(
@@ -219,8 +201,6 @@ class TestIngest:
     def test_a_failing_stage_is_recorded_before_the_error_propagates(
         self, conn, make_pdf, embeddings, model, monkeypatch
     ):
-        """A crash 40 minutes in has to leave a diagnosable trace, because
-        reproducing it costs another 40 minutes."""
         pdf = make_pdf()
 
         def explode(*args, **kwargs):
@@ -247,8 +227,6 @@ class TestIngest:
     def test_a_later_stage_is_not_attempted_after_a_failure(
         self, conn, make_pdf, embeddings, model, monkeypatch
     ):
-        """Each stage reads what the previous produced, so carrying on would
-        chunk a document that was never parsed."""
         pdf = make_pdf()
         monkeypatch.setattr(
             "app.ingest.pipeline.parse_document",

@@ -1,18 +1,4 @@
-"""Stage four of ingest: pull named datapoints out, with proof.
-
-This is the stage the brief names directly, and the only one where the system
-can be confidently wrong. Parsing either produces a block or it does not.
-Chunking is arithmetic. A model asked how many people a company employs will
-always produce a number, and there is nothing in the number itself to say
-whether it came from the financial statements or from a marketing headline
-three hundred pages away.
-
-The answer is that nothing is stored on the model's say-so. Every extraction
-has to carry a quotation, and that quotation has to be found in the text that
-was actually handed over before the fact is written. An extraction that cannot
-be traced back to its source is discarded rather than stored with a caveat, on
-the grounds that a datapoint nobody can check is worse than a missing one.
-"""
+"""Stage four of ingestion which is to pull named datapoints out with citation."""
 
 from __future__ import annotations
 
@@ -30,22 +16,11 @@ from app.providers.base import EmbeddingProvider, StructuredExtractor
 from app.retrieve import search_many
 from app.verify import find_source, locate_page
 
-# Stored on every row. Bump it when a prompt or a field instruction changes, so
-# facts extracted under different rules are told apart rather than silently
-# mixed. Extraction rewrites a document's facts wholesale, so this is a record
-# of provenance rather than a migration mechanism.
 EXTRACTOR_VERSION = "2026-08-09.2"
-
-# Chunks handed to the model per field. Each field asks four differently worded
-# queries and they take turns filling this, so twenty means five each. Twelve
-# was not enough: ABN AMRO states its group headcount on page 402 in wording
-# only one of the four queries matches, and at three excerpts per query it
-# never reached the model.
 CANDIDATE_CHUNKS = 20
 
 
 class ExtractedValue(BaseModel):
-    """One datapoint the model claims to have found."""
 
     value_raw: str = PydanticField(
         description=(
@@ -89,7 +64,6 @@ class ExtractedValue(BaseModel):
 
 
 class Extraction(BaseModel):
-    """Everything the model found for one field in one report."""
 
     values: list[ExtractedValue] = PydanticField(
         default_factory=list,
@@ -122,20 +96,6 @@ for and say so through your confidence rather than hedging in the value.
 
 
 def build_prompt(document: Document, field: Field, chunks: Sequence[Chunk]) -> str:
-    """Assemble the user message for one field of one report.
-
-    Excerpts are numbered and labelled with their page, so the model has
-    something to reference and so a person reading the prompt back can see
-    exactly what it was working from.
-
-    Args:
-        document: The report being read.
-        field: What to look for.
-        chunks: The retrieved excerpts, best first.
-
-    Returns:
-        The prompt.
-    """
     excerpts = "\n\n".join(
         f"--- excerpt {number} (page {chunk.page_start}"
         f"{f' to {chunk.page_end}' if chunk.page_end != chunk.page_start else ''}"
@@ -167,29 +127,6 @@ def to_facts(
     version: str = EXTRACTOR_VERSION,
     blocks: Sequence[Block] = (),
 ) -> tuple[list[Fact], list[str]]:
-    """Verify an extraction and turn what survives into facts.
-
-    The gate the whole stage exists for. A value whose quotation cannot be
-    found in the excerpts is dropped, not stored with a warning flag, because
-    a table of company figures where some rows are trustworthy and others are
-    not is worse than a table with gaps in it.
-
-    Args:
-        extraction: What the model returned.
-        chunks: The excerpts it was given.
-        document: The report.
-        field: The field being extracted.
-        version: Recorded on every row.
-        blocks: Blocks covering the candidate chunks' page ranges, used to
-            pin a quotation to the page it is actually printed on. Only
-            consulted for chunks that span a page break.
-
-    Returns:
-        The facts that verified, and one line per rejection explaining why.
-
-    Raises:
-        ValueError: If the document has no id.
-    """
     if document.id is None:
         raise ValueError("cannot extract from a document that has not been created")
 
@@ -222,19 +159,6 @@ def to_facts(
 
 
 def _spanning_blocks(conn: sqlite3.Connection, chunks: Sequence[Chunk]) -> list[Block]:
-    """Fetch the blocks needed to pin quotations to a page.
-
-    Only for chunks that cross a page break, which is a small minority. A chunk
-    sitting on one page already knows its page, so reading its blocks would be
-    work for nothing.
-
-    Args:
-        conn: An open connection.
-        chunks: The candidate excerpts.
-
-    Returns:
-        Blocks covering the page ranges of the chunks that span pages.
-    """
     repository = BlockRepository(conn)
     found: list[Block] = []
     for chunk in chunks:
@@ -257,32 +181,6 @@ def extract_document(
     candidates: int = CANDIDATE_CHUNKS,
     on_progress: Callable[[str], None] | None = None,
 ) -> int:
-    """Extract every registered field from one report.
-
-    Rewrites the report's facts from scratch. Clearing first rather than
-    relying on extractor_version keeps the table honest: a field that used to
-    extract and no longer does disappears, instead of lingering as a stale row
-    the interface would happily still display.
-
-    Args:
-        conn: An open connection from db.connection.
-        document: The report to read. Its id must be set.
-        model: The language model.
-        embeddings: The embedding provider, for finding candidate excerpts.
-        fields: Which fields to extract.
-        candidates: Excerpts to retrieve per field.
-        on_progress: Called with a line of human readable progress.
-
-    Returns:
-        How many facts were stored.
-
-    Raises:
-        ValueError: If the document has no id.
-        RuntimeError: If every field failed, which means something systematic
-            is wrong rather than one field being awkward. A partial success is
-            reported through the progress callback and left to stand, since
-            four fields out of five is a useful result and re-running is cheap.
-    """
     if document.id is None:
         raise ValueError("cannot extract from a document that has not been created")
 
@@ -310,10 +208,6 @@ def extract_document(
             report(f"  {field.key}: no candidate excerpts found")
             continue
 
-        # A field that fails does not take the rest of the document with it.
-        # The commonest failure by far is the reply being cut off at the token
-        # ceiling, which arrives as a JSON parse error rather than as anything
-        # resembling "too long", so the message says what it usually means.
         try:
             extraction = model.parse(
                 system=SYSTEM_PROMPT,

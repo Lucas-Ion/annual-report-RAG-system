@@ -1,16 +1,4 @@
-"""What the model is told when answering a question.
-
-Kept apart from the code that calls it so the wording can be read, reviewed and
-changed without wading through orchestration. Everything here is a pure
-function of its arguments, so a test asserts on a string rather than making a
-request.
-
-The citation syntax is the load bearing decision. Structured outputs would give
-a guaranteed shape, but they cannot be streamed, and an answer over eight
-excerpts takes several seconds to write during which the interface would sit
-blank. Asking for markers inside ordinary prose keeps the answer streamable and
-still leaves something a parser can verify afterwards.
-"""
+"""What the model is told when answering a question."""
 
 from __future__ import annotations
 
@@ -53,19 +41,6 @@ and excerpts from different companies may appear together.
 
 
 def format_sources(chunks: Sequence[Chunk]) -> str:
-    """Render retrieved chunks as numbered excerpts.
-
-    Each carries its company, page and section. The company matters more than
-    it looks: excerpts from five different reports can appear in one prompt,
-    and an answer that silently mixes two companies' figures is worse than no
-    answer.
-
-    Args:
-        chunks: The retrieved excerpts, best first.
-
-    Returns:
-        The excerpts, numbered from 1 to match the citation syntax.
-    """
     return "\n\n".join(
         f"--- source {number} | {chunk.context_header} | page {chunk.page_start}"
         f"{f' to {chunk.page_end}' if chunk.page_end != chunk.page_start else ''}"
@@ -75,18 +50,6 @@ def format_sources(chunks: Sequence[Chunk]) -> str:
 
 
 def format_history(messages: Sequence[Message], limit: int = 6) -> str:
-    """Render recent conversation turns for context.
-
-    Only the last few. A long thread crowds out the excerpts, and the excerpts
-    are what the answer has to come from.
-
-    Args:
-        messages: The conversation so far, oldest first.
-        limit: How many recent turns to include.
-
-    Returns:
-        The turns as labelled lines, or an empty string when there are none.
-    """
     recent = messages[-limit:]
     if not recent:
         return ""
@@ -100,16 +63,6 @@ def format_history(messages: Sequence[Message], limit: int = 6) -> str:
 def build_prompt(
     question: str, chunks: Sequence[Chunk], history: Sequence[Message] = ()
 ) -> str:
-    """Assemble the user message for one question.
-
-    Args:
-        question: What was asked.
-        chunks: The retrieved excerpts, best first.
-        history: Earlier turns in this conversation, oldest first.
-
-    Returns:
-        The prompt.
-    """
     if not chunks:
         return (
             f"{format_history(history)}"
@@ -125,14 +78,6 @@ def build_prompt(
 
 
 def build_title_prompt(question: str) -> str:
-    """Ask for a short label for a conversation.
-
-    Args:
-        question: The first question in the thread.
-
-    Returns:
-        The prompt.
-    """
     return (
         f"Give a title of at most six words for a conversation that starts "
         f"with this question. Reply with the title alone, no quotes, no "

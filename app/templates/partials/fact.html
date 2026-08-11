@@ -1,13 +1,10 @@
-{# One extracted datapoint with the evidence it was taken from.
-   The page badge opens the source PDF at that page, so a quoted figure is one
-   click from the paragraph it was quoted out of. #}
+{% from "partials/macros.html" import page_link %}
+
 <li class="fact">
   <div class="fact-head">
     <span class="fact-value">{{ fact.value_raw }}</span>
     {% if fact.unit %}<span class="badge" data-variant="outline">{{ fact.unit }}</span>{% endif %}
-    <a class="badge page-link" data-variant="secondary" target="_blank" rel="noopener"
-       href="/documents/{{ fact.document_id }}/pdf#page={{ fact.page_no }}"
-       title="Open the report at page {{ fact.page_no }}">p{{ fact.page_no }}</a>
+    {{ page_link(fact.document_id, fact.page_no) }}
     {% if fact.confidence is not none %}
       <span class="badge conf {{ '' if fact.confidence >= 0.7 else 'low' }}" data-variant="outline"
             title="Model confidence">{{ '%.2f'|format(fact.confidence) }}</span>

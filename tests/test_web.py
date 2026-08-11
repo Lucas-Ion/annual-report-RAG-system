@@ -1,9 +1,4 @@
-"""The HTTP layer, driven through FastAPI's test client.
-
-Both providers are overridden with fakes, so the whole suite runs with no API
-key, no network and no 2GB model. That is only possible because the routes ask
-for capabilities rather than for concrete classes.
-"""
+"""Testing the HTTP layer, driven through FastAPI's test client."""
 
 from __future__ import annotations
 
@@ -15,25 +10,11 @@ from fastapi.testclient import TestClient
 
 from app.main import create_app
 from app.routes.deps import embeddings as embeddings_dependency
-
-# Aliased because the dependency function and the fixture share a name, and
-# the fixture is what a test asks for by name.
 from app.routes.deps import language_model
 
 
 @pytest.fixture
 def client(conn, seeded, embeddings, model):
-    """A test client wired to the temporary database and the fakes.
-
-    Only the providers are overridden. The connection deliberately is not: a
-    sqlite3 connection belongs to the thread that opened it, and the test
-    client runs the application on another one, so handing it this test's
-    connection raises. The conn fixture already points RAG_DB_PATH at the
-    temporary database, so the real dependency opens the right file on the
-    right thread by itself. That is the same arrangement the application uses
-    in production, which makes this a more honest test than an injected
-    connection would be.
-    """
     application = create_app()
     application.dependency_overrides[embeddings_dependency] = lambda: embeddings
     application.dependency_overrides[language_model] = lambda: model
@@ -49,8 +30,6 @@ class TestPages:
         assert "text/html" in response.headers["content-type"]
 
     def test_the_index_shows_the_extracted_figure(self, client, seeded):
-        """The brief's requirement that pre-extracted data be visible. No model
-        call is involved; it is read from the database."""
         assert "12,345" in client.get("/").text
 
     def test_a_report_page_shows_its_evidence(self, client, seeded):
@@ -62,12 +41,9 @@ class TestPages:
         assert client.get("/documents/9999").status_code == 404
 
     def test_page_numbers_link_into_the_pdf(self, client, seeded):
-        """Every page badge opens the source at that page, which is what turns
-        a quotation from something to trust into something to check."""
         assert f"/documents/{seeded.id}/pdf#page=5" in client.get("/").text
 
     def test_a_report_with_no_pdf_on_disk_is_a_404_not_a_crash(self, client, seeded):
-        """The database ships seeded and the source files can be absent."""
         assert client.get(f"/documents/{seeded.id}/pdf").status_code == 404
 
 
@@ -86,7 +62,6 @@ class TestDocumentsApi:
 class TestChatApi:
     @staticmethod
     def events(response) -> list[tuple[str, Any]]:
-        """Parse a server-sent event stream into (name, payload) pairs."""
         found = []
         for frame in response.text.split("\n\n"):
             lines = dict(
@@ -106,8 +81,6 @@ class TestChatApi:
         assert names[-1] == "citations"
 
     def test_sources_arrive_before_a_single_token(self, client, seeded):
-        """So the interface can show what the answer is being built from while
-        it is still being written."""
         events = self.events(client.post("/api/chat", json={"question": "employees?"}))
         name, meta = events[0]
         assert name == "meta"
@@ -148,16 +121,9 @@ class TestHealth:
 
 
 class TestUpload:
-    """The upload endpoint's guards.
-
-    Ingestion itself is not exercised here: it runs on a background thread and
-    would parse a real PDF. What is tested is everything that must happen
-    before that thread starts, which is where a bad file has to be caught.
-    """
 
     @staticmethod
     def send(client, name: str, content: bytes, **fields):
-        """Post a file to the upload endpoint."""
         return client.post(
             "/api/documents",
             files={"file": (name, content, "application/pdf")},
@@ -173,8 +139,6 @@ class TestUpload:
         assert self.send(client, "notes.txt", b"%PDF-1.4").status_code == 400
 
     def test_an_unreadable_filename_is_refused_with_advice(self, client):
-        """Rather than guessing a company, since a wrong one is worse than a
-        clear question."""
         response = self.send(client, "scan001.pdf", b"%PDF-1.4 content")
         assert response.status_code == 400
         assert "shell-annual-report-2025.pdf" in response.json()["detail"]
@@ -206,7 +170,6 @@ class TestProgress:
         )
 
     def test_reports_a_failure_with_its_reason(self, client, conn, seeded):
-        """A crash 40 minutes in has to be diagnosable without reproducing it."""
         from app.db.connection import transaction
         from app.db.models import Stage
         from app.db.repositories import StageRunRepository
@@ -219,6 +182,60 @@ class TestProgress:
     def test_a_missing_document_is_a_404(self, client):
         assert client.get("/api/documents/9999/progress").status_code == 404
 
+    def test_a_fully_ingested_report_is_reported_as_done(self, client, conn, seeded):
+        from app.db.connection import transaction
+        from app.db.models import Stage
+        from app.db.repositories import StageRunRepository
+
+        runs = StageRunRepository(conn)
+        with transaction(conn):
+            for stage in Stage:
+                runs.start(seeded.id, stage)
+                runs.finish(seeded.id, stage)
+
+        payload = client.get(f"/api/documents/{seeded.id}/progress").json()
+        assert payload["done"] is True
+
+
+class TestInProgress:
+
+    def test_nothing_running_is_an_empty_list(self, client, seeded):
+        assert client.get("/api/documents/in-progress").json() == []
+
+    def test_a_running_ingest_is_listed(self, client, conn, seeded):
+        from app.db.connection import transaction
+        from app.db.models import Stage
+        from app.db.repositories import StageRunRepository
+
+        with transaction(conn):
+            StageRunRepository(conn).start(seeded.id, Stage.PARSE)
+
+        listed = client.get("/api/documents/in-progress").json()
+        assert len(listed) == 1
+        assert listed[0]["running"] == "parse"
+
+    def test_a_finished_ingest_is_not_listed(self, client, conn, seeded):
+        from app.db.connection import transaction
+        from app.db.models import Stage
+        from app.db.repositories import StageRunRepository
+
+        runs = StageRunRepository(conn)
+        with transaction(conn):
+            for stage in Stage:
+                runs.start(seeded.id, stage)
+                runs.finish(seeded.id, stage)
+        assert client.get("/api/documents/in-progress").json() == []
+
+    def test_a_failed_ingest_is_still_listed(self, client, conn, seeded):
+        from app.db.connection import transaction
+        from app.db.models import Stage
+        from app.db.repositories import StageRunRepository
+
+        with transaction(conn):
+            StageRunRepository(conn).fail(seeded.id, Stage.PARSE, "TritonMissing")
+        listed = client.get("/api/documents/in-progress").json()
+        assert len(listed) == 1 and "TritonMissing" in listed[0]["error"]
+
 
 class TestRemove:
     def test_removes_the_report_and_everything_derived_from_it(
@@ -230,8 +247,6 @@ class TestRemove:
             assert conn.execute(f"SELECT count(*) n FROM {table}").fetchone()["n"] == 0
 
     def test_removes_the_embeddings_too(self, client, conn, seeded):
-        """The one cascade SQLite cannot do, since a vec0 table cannot declare
-        a foreign key. Orphaned vectors would keep being returned by search."""
         client.delete(f"/api/documents/{seeded.id}")
         assert conn.execute("SELECT count(*) n FROM chunk_vectors").fetchone()["n"] == 0
 
@@ -242,8 +257,6 @@ class TestRemove:
     def test_the_source_pdf_is_not_deleted(
         self, client, conn, seeded, monkeypatch, tmp_path
     ):
-        """Deleting an index entry should not destroy a file somebody put
-        there, and in this repository the PDFs are committed artifacts."""
         pdf = tmp_path / seeded.filename
         pdf.write_bytes(b"%PDF-1.4 pretend")
         monkeypatch.setattr("app.config.PDF_DIR", tmp_path)
@@ -262,9 +275,6 @@ class TestRemove:
     def test_a_removed_report_can_be_uploaded_again(
         self, client, conn, seeded, monkeypatch, tmp_path, make_pdf
     ):
-        """The file is left on disk, so re-adding must overwrite rather than
-        refuse. Otherwise deleting a report makes it impossible to re-add
-        without shell access."""
         monkeypatch.setattr("app.routes.uploads.PDF_DIR", tmp_path)
         leftover = tmp_path / "acme-2025.pdf"
         leftover.write_bytes(b"%PDF-1.4 stale")
@@ -281,9 +291,6 @@ class TestRemove:
 
 class TestConversations:
     def test_a_reopened_thread_carries_its_citations(self, client, conn, seeded):
-        """Rendering the stored text raw was why a reopened conversation showed
-        bare "[3: ...]" markers and no sources. The endpoint now returns the
-        citations so the same renderer can be used as for a live answer."""
         posted = client.post("/api/chat", json={"question": "how many employees?"})
         thread = TestChatApi.events(posted)[0][1]["conversation_id"]
 
@@ -321,3 +328,23 @@ class TestConversations:
             client.patch("/api/conversations/9999", json={"title": "x"}).status_code
             == 404
         )
+
+    def test_a_thread_can_be_deleted(self, client, conn, seeded):
+        posted = client.post("/api/chat", json={"question": "how many employees?"})
+        thread = TestChatApi.events(posted)[0][1]["conversation_id"]
+
+        assert client.delete(f"/api/conversations/{thread}").status_code == 200
+        assert client.get(f"/api/conversations/{thread}").status_code == 404
+
+    def test_deleting_a_thread_takes_its_messages_and_citations(
+        self, client, conn, seeded
+    ):
+        posted = client.post("/api/chat", json={"question": "how many employees?"})
+        thread = TestChatApi.events(posted)[0][1]["conversation_id"]
+        client.delete(f"/api/conversations/{thread}")
+
+        for table in ("conversations", "messages", "citations"):
+            assert conn.execute(f"SELECT count(*) n FROM {table}").fetchone()["n"] == 0
+
+    def test_deleting_a_missing_thread_is_a_404(self, client):
+        assert client.delete("/api/conversations/9999").status_code == 404

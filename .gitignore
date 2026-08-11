@@ -21,8 +21,13 @@ data/rag.db
 data/rag.db-wal
 data/rag.db-shm
 
-# Throwaway parser output, spikes, comparisons
+
 scratch/
 
 # OS
 .DS_Store
+
+# Personal study notes and the guide built from them. Not part of the
+# submission: it carries an interview question bank and a candid weaknesses
+# section, neither of which belongs in a repository a reviewer reads.
+docs/study/

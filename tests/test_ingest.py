@@ -1,8 +1,4 @@
-"""Batch planning, block mapping, and chunking.
-
-All pure. No PDF is opened and no model is loaded, which is why these run in
-milliseconds against list literals rather than in minutes against a report.
-"""
+"""Batch planning, block mapping, and chunking."""
 
 from __future__ import annotations
 
@@ -23,12 +19,10 @@ DOCUMENT = Document(id=1, filename="x.pdf", file_hash="h", company="Acme", year=
 
 
 def block(seq: int, label: str, text: str, page: int = 1) -> Block:
-    """Build a block for a test."""
     return Block(document_id=1, seq=seq, page_no=page, label=label, text=text)
 
 
 class TestPlanBatches:
-    """Resume arithmetic. Wrong here means a lost hour or a duplicated page."""
 
     def test_a_fresh_document_covers_every_page_once(self):
         pages = [
@@ -48,13 +42,6 @@ class TestPlanBatches:
         assert plan_batches(434, 30, 25)[0] == (51, 75)
 
     def test_a_batch_whose_tail_pages_were_blank_still_counts_as_done(self):
-        """The subtle one.
-
-        Batches commit atomically, so a batch with any stored block finished.
-        If its last pages happened to hold no content, the highest stored page
-        is below the batch end, and resuming from page+1 would redo pages that
-        are already committed and duplicate them.
-        """
         assert plan_batches(434, 398, 25)[0] == (401, 425)
 
     def test_a_finished_document_has_nothing_to_do(self):
@@ -69,9 +56,6 @@ class TestPlanBatches:
 
 
 class TestCollapseTable:
-    """Docling pads table cells to align columns. On this corpus 56% of all
-    table text was padding, and one 51,603 character table held 128 characters
-    of header spread across 12,900."""
 
     def test_removes_cell_padding(self):
         padded = (
@@ -85,8 +69,6 @@ class TestCollapseTable:
         assert all(word in collapsed for word in ("Name", "Value", "Revenue", "1,204"))
 
     def test_rebuilds_the_separator_rather_than_collapsing_it(self):
-        """Dashes are not whitespace, so a separator survives collapsing at
-        full width unless it is rebuilt."""
         wide = "| a | b |\n|" + "-" * 400 + "|" + "-" * 400 + "|\n| 1 | 2 |"
         assert len(collapse_table(wide).splitlines()[1]) < 30
 
@@ -127,8 +109,6 @@ class TestSplitTable:
         assert len(seen) == 60
 
     def test_falls_back_to_splitting_by_column_when_a_row_is_too_long(self):
-        """Sustainability disclosure tables are eight columns wide, two rows
-        deep, with a paragraph in every cell. Splitting by row cannot help."""
         wide = (
             "| "
             + " | ".join(f"h{i}" for i in range(8))
@@ -163,8 +143,6 @@ class TestBuildChunks:
         assert "Our people" in chunks[0].text
 
     def test_the_context_header_is_never_part_of_the_text(self):
-        """It is prefixed for embedding only. If it leaked into the text a
-        quotation could match against words that are not in the report."""
         chunks = build_chunks(DOCUMENT, [block(0, "text", "body")])
         assert chunks[0].context_header not in chunks[0].text
         assert chunks[0].embedding_text.startswith(chunks[0].context_header)

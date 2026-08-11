@@ -1,4 +1,4 @@
-"""Rank fusion, round robin merging, and reading a company out of a question."""
+"""Testing Rank fusion, round robin merging, and reading a company out of a question."""
 
 from __future__ import annotations
 
@@ -9,7 +9,6 @@ from app.retrieve import aliases, detect_document, fuse, interleave
 
 
 class TestFuse:
-    """Reciprocal rank fusion, for combining methods answering one question."""
 
     def test_empty_input(self):
         assert fuse([]) == []
@@ -21,19 +20,12 @@ class TestFuse:
         assert sorted(fuse([[1, 2], [2, 1], [1, 2]])) == [1, 2]
 
     def test_agreement_beats_a_single_strong_placing(self):
-        """The property the whole approach rests on.
-
-        Chunk 7 places third in both lists. Chunks 9 and 6 place first in one
-        list each and nowhere in the other. Agreement should win, because
-        either search alone is confidently wrong often enough to matter.
-        """
         merged = fuse([[9, 8, 7], [6, 5, 7]])
         assert merged.index(7) < merged.index(9)
         assert merged.index(7) < merged.index(6)
 
 
 class TestInterleave:
-    """Round robin merging, for combining different phrasings of one need."""
 
     def test_takes_turns(self):
         assert interleave([[1, 2, 3], [4, 5, 6]], 4) == [1, 4, 2, 5]
@@ -51,19 +43,12 @@ class TestInterleave:
         assert interleave([], 5) == []
 
     def test_a_specific_answer_survives_generic_competition(self):
-        """Why this exists rather than fusing everything.
-
-        One query ranks the answer second and the others do not return it at
-        all, while a generic near miss places mid-table in all four. Fusing
-        buries the answer; taking turns keeps it.
-        """
         rankings = [[99, 42], [99, 50], [99, 51], [99, 52]]
         assert 42 in interleave(rankings, 5)
         assert fuse(rankings).index(42) > fuse(rankings).index(99)
 
 
 def report(company: str) -> Document:
-    """Build a document for a test."""
     return Document(
         id=hash(company) % 1000,
         filename="x.pdf",
@@ -116,9 +101,4 @@ class TestDetectDocument:
         ],
     )
     def test_declines_to_narrow(self, question):
-        """Two companies means a comparison; none means nothing to narrow to.
-
-        The last two are the traps: a short alias inside another word, and a
-        lowercase unit that happens to spell a company name.
-        """
         assert detect_document(question, DOCUMENTS) is None

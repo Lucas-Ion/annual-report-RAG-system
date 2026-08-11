@@ -29,21 +29,6 @@ SKIP_LABELS = frozenset({"page_header", "page_footer", "picture"})
 def plan_batches(
     page_count: int, resume_after: int | None, size: int = DEFAULT_BATCH_SIZE
 ) -> list[tuple[int, int]]:
-    """Work out which page ranges still need converting.
-
-    Args:
-        page_count: Total pages in the PDF.
-        resume_after: Highest page number already stored for this document, or
-            None if nothing has been parsed yet.
-        size: Pages per batch.
-
-    Returns:
-        Inclusive (first_page, last_page) pairs still to be converted, in
-        order. Empty when the document is already fully parsed.
-
-    Raises:
-        ValueError: If size is not positive, which would loop forever.
-    """
     if size < 1:
         raise ValueError(f"batch size must be at least 1, got {size}")
 
@@ -57,19 +42,6 @@ def plan_batches(
 
 
 def to_blocks(document_id: int, parsed: DoclingDocument, first_seq: int) -> list[Block]:
-    """Convert one Docling result into blocks, in reading order.
-
-    Args:
-        document_id: The document these blocks belong to.
-        parsed: The result of one conversion, covering one batch of pages.
-        first_seq: Reading order position to assign to the first block. A
-            resumed parse continues numbering from where the last run stopped,
-            because chunks are built by walking blocks in seq order and the
-            column is unique per document.
-
-    Returns:
-        The blocks worth keeping, numbered consecutively from first_seq.
-    """
     blocks: list[Block] = []
     seq = first_seq
     for item, _level in parsed.iterate_items():
@@ -83,25 +55,6 @@ def to_blocks(document_id: int, parsed: DoclingDocument, first_seq: int) -> list
 def _to_block(
     item: object, parsed: DoclingDocument, document_id: int, seq: int
 ) -> Block | None:
-    """Convert a single Docling item, or return None if it should be dropped.
-
-    Three separate reasons an item gets dropped, and all three are ordinary
-    rather than exceptional, which is why this returns None instead of raising.
-
-    Args:
-        item: One item from iterate_items(). Typed loosely because Docling
-            yields a NodeItem, and only the DocItem subclasses carry the
-            provenance and text this function needs.
-        parsed: The document the item came from. Needed because rendering a
-            table requires the surrounding document, not just the item.
-        document_id: The document these blocks belong to.
-        seq: Reading order position for this block.
-
-    Returns:
-        The block, or None for items with no provenance, no usable text, or a
-        label on the skip list.
-    """
-
     if not isinstance(item, DocItem) or not item.prov:
         return None
 
@@ -136,38 +89,13 @@ def _to_block(
     )
 
 
-# Shell
-
-
 def can_compile_models() -> bool:
-    """Whether torch.compile can actually produce kernels on this machine.
-
-    Docling compiles its layout model by default, which is worth having: it is
-    the slowest stage by a distance. On a CUDA device that compilation goes
-    through Inductor, which generates Triton kernels, and Triton ships no
-    official Windows build. The result on a Windows GPU box is that every batch
-    raises TritonMissing and the parse produces nothing at all.
-
-    CPU and MPS are unaffected, because Inductor falls back to its own C++
-    backend there and never reaches Triton.
-
-    Returns:
-        True when compilation is safe to leave on.
-    """
     if not torch.cuda.is_available():
         return True
     return importlib.util.find_spec("triton") is not None
 
 
 def build_converter() -> DocumentConverter:
-    """Create the converter used for every batch.
-
-    Returns:
-        A converter configured for digital PDFs with table structure detection.
-    """
-    # Read when the options object below is constructed, so this has to happen
-    # first. Leaving compilation on where it cannot work does not degrade to
-    # something slower, it fails outright on every page.
     docling_settings.inference.compile_torch_models = can_compile_models()
 
     options = PdfPipelineOptions()
@@ -179,14 +107,6 @@ def build_converter() -> DocumentConverter:
 
 
 def page_count(pdf: Path) -> int:
-    """Count the pages in a PDF.
-
-    Args:
-        pdf: Path to the PDF.
-
-    Returns:
-        Number of pages.
-    """
     with pymupdf.open(pdf) as document:
         return document.page_count
 
@@ -200,30 +120,6 @@ def parse_document(
     batch_size: int = DEFAULT_BATCH_SIZE,
     on_batch: Callable[[int, int, int], None] | None = None,
 ) -> int:
-    """Parse a PDF into blocks, resuming if a previous run was interrupted.
-
-    Safe to call repeatedly. A fully parsed document does no work and returns
-    zero, so the pipeline does not need to guard the call.
-
-    Args:
-        conn: An open connection from db.connection.
-        document: The already registered document. Its id must be set.
-        pdf: Path to the PDF on disk.
-        converter: A converter to reuse. One is built if omitted, which is fine
-            for a single document and wasteful for several.
-        batch_size: Pages per conversion. Do not change this partway through a
-            document, see plan_batches.
-        on_batch: Called after each batch commits, with the first page, the
-            last page, and how many blocks that batch produced. Purely for
-            progress reporting, since a silent hour is hard to trust.
-
-    Returns:
-        How many blocks this call wrote. Zero means there was nothing left.
-
-    Raises:
-        ValueError: If the document has not been created yet, so has no id.
-        FileNotFoundError: If the PDF is not where it says it is.
-    """
     if document.id is None:
         raise ValueError("cannot parse a document that has not been created")
     if not pdf.is_file():

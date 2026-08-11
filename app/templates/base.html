@@ -4,14 +4,11 @@
   <meta charset="utf-8">
   <meta name="viewport" content="width=device-width, initial-scale=1">
   <title>{% block title %}Annual report RAG{% endblock %}</title>
-  {# Basecoat first, then our own layer. Order matters: anything emitting a
-     Tailwind reset after Basecoat would undo its component defaults. #}
-  <link rel="stylesheet" href="/static/css/basecoat.css">
-  <link rel="stylesheet" href="/static/css/app.css">
+
+  <link rel="stylesheet" href="{{ asset('css/basecoat.css') }}">
+  <link rel="stylesheet" href="{{ asset('css/app.css') }}">
   <link rel="icon" href="data:,">
-  {# Inline and before any paint, so a dark-mode visitor never sees a white
-     flash. Basecoat keys dark mode off html.dark rather than a media query,
-     which is what makes an explicit toggle possible at all. #}
+
   <script>
     (() => {
       const saved = localStorage.getItem("theme");
@@ -23,9 +20,15 @@
 </head>
 <body>
   <header class="masthead">
-    <a class="brand" href="/">Annual Report RAG System</span></a>
+
+    <a class="btn home" data-variant="{{ 'secondary' if nav == 'documents' else 'ghost' }}"
+       data-size="sm" href="/" aria-label="Home">
+      <svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" viewBox="0 0 24 24"
+           fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"
+           stroke-linejoin="round"><path d="M3 10.5 12 3l9 7.5V20a1 1 0 0 1-1 1h-5v-6H9v6H4a1 1 0 0 1-1-1Z"/></svg>
+      Home
+    </a>
     <nav>
-      <a class="btn" data-variant="{{ 'secondary' if nav == 'documents' else 'ghost' }}" data-size="sm" href="/">Reports</a>
       <a class="btn" data-variant="{{ 'secondary' if nav == 'compare' else 'ghost' }}" data-size="sm" href="/compare">Compare</a>
       <a class="btn" data-variant="{{ 'secondary' if nav == 'chat' else 'ghost' }}" data-size="sm" href="/chat">Ask</a>
       <button class="btn" data-variant="ghost" data-size="icon" id="theme" aria-label="Toggle dark mode" title="Toggle dark mode">
@@ -45,6 +48,21 @@
       localStorage.setItem("theme", dark ? "dark" : "light");
     });
   </script>
+
+  <dialog class="dialog" id="confirm-dialog">
+    <article>
+      <header>
+        <h2 data-title>Are you sure?</h2>
+        <p data-description></p>
+      </header>
+      <footer>
+        <button class="btn" data-variant="outline" value="cancel"
+                onclick="document.getElementById('confirm-dialog').close()">Cancel</button>
+        <button class="btn" data-variant="destructive" value="confirm">Delete</button>
+      </footer>
+    </article>
+  </dialog>
+  <script src="{{ asset('js/confirm.js') }}"></script>
   {% block scripts %}{% endblock %}
 </body>
 </html>

@@ -1,12 +1,11 @@
 {% extends "base.html" %}
+{% from "partials/macros.html" import page_link %}
 {% set nav = 'compare' %}
 {% block title %}Compare &middot; Annual report RAG{% endblock %}
 {% block content %}
 <h1>Side by side</h1>
 <p class="lede">
-  The same datapoint across every report. Watch the basis column: companies
-  report headcount and full-time equivalents interchangeably, and the two are
-  not comparable.
+  The same datapoint across every report. 
 </p>
 
 {% for group in table %}
@@ -17,9 +16,7 @@
       <thead>
         <tr><th>Company</th><th>Value</th><th>Basis</th><th>Page</th><th>Source</th></tr>
       </thead>
-      {# Rows come back grouped by document, so a company is named once at the
-         top of its block rather than repeated down every row. Heineken has 26
-         sustainability targets; 26 identical logos would be noise. #}
+
       {% set ns = namespace(previous=None) %}
       <tbody>
         {% for document, fact, _logo in group.rows %}
@@ -32,10 +29,7 @@
           </td>
           <td class="num">{{ fact.value_raw }}</td>
           <td class="muted">{{ fact.unit or '' }}</td>
-          <td class="num">
-            <a class="page-link" target="_blank" rel="noopener"
-               href="/documents/{{ document.id }}/pdf#page={{ fact.page_no }}">p{{ fact.page_no }}</a>
-          </td>
+          <td class="num">{{ page_link(document.id, fact.page_no, 'plain') }}</td>
           <td class="src">{{ fact.verbatim_quote }}</td>
         </tr>
         {% else %}

@@ -1,9 +1,4 @@
-"""Extraction, and the gate that decides what is allowed to be stored.
-
-The model here is a fake, so these tests cost nothing and are deterministic.
-What they check is the part that is ours: whether a claimed quotation survives
-being looked for in the text the model was actually shown.
-"""
+"""Extraction"""
 
 from __future__ import annotations
 
@@ -22,7 +17,6 @@ DOCUMENT = Document(id=1, filename="x.pdf", file_hash="h", company="Acme", year=
 
 
 def chunk(chunk_id: int, text: str, page: int = 8) -> Chunk:
-    """Build an excerpt for a test."""
     return Chunk(
         id=chunk_id,
         document_id=1,
@@ -41,7 +35,6 @@ EXCERPTS = [REAL, OTHER]
 
 
 def value(**overrides) -> ExtractedValue:
-    """Build an extracted value, correct unless overridden."""
     return ExtractedValue(
         **{
             "value_raw": "12,345",
@@ -63,8 +56,6 @@ class TestVerificationGate:
         assert len(facts) == 1 and rejected == []
 
     def test_an_invented_figure_is_rejected(self):
-        """The failure this whole stage exists to prevent. The model is
-        fluent, the number is plausible, and it is not in the report."""
         made_up = value(
             value_raw="99,999",
             verbatim_quote="Average number of employees (FTE) | 99,999",
@@ -81,9 +72,6 @@ class TestVerificationGate:
         assert facts == []
 
     def test_a_wrong_excerpt_number_does_not_lose_a_real_quote(self):
-        """Models misnumber references while quoting accurately. The quote is
-        looked for in every excerpt, and the page comes from where it was
-        actually found rather than from what was claimed."""
         misnumbered = value(verbatim_quote="our strength", excerpt_number=99)
         facts, rejected = to_facts(
             Extraction(values=[misnumbered]), EXCERPTS, DOCUMENT, FTE
@@ -97,7 +85,6 @@ class TestVerificationGate:
         assert len(facts) == 1 and len(rejected) == 1
 
     def test_an_empty_reply_is_a_valid_answer(self):
-        """A missing datapoint is a correct result. An invented one is not."""
         facts, rejected = to_facts(Extraction(), EXCERPTS, DOCUMENT, FTE)
         assert facts == [] and rejected == []
 
@@ -123,8 +110,6 @@ class TestPrompt:
         assert "--- excerpt 2 (page 31" in prompt
 
     def test_carries_the_fields_instruction(self):
-        """The instruction encodes what was learned from the corpus, such as
-        preferring an exact figure over a rounded one."""
         assert "Prefer an exact figure" in build_prompt(DOCUMENT, FTE, EXCERPTS)
 
     def test_a_single_valued_field_asks_for_one_answer(self):
@@ -136,9 +121,6 @@ class TestPrompt:
 
 class TestExtractDocument:
     def test_a_failing_field_does_not_lose_the_others(self, conn, seeded, embeddings):
-        """A truncated reply arrives as a JSON parse error. Before this, one
-        bad field abandoned the whole document and the finished fields with it.
-        """
 
         class HalfBroken:
             def __init__(self):
@@ -166,8 +148,6 @@ class TestExtractDocument:
     def test_previous_facts_are_cleared_before_re_extraction(
         self, conn, seeded, embeddings, model
     ):
-        """A field that used to extract and no longer does should disappear,
-        not linger as a stale row the interface still displays."""
         assert FactRepository(conn).read_for_document(seeded.id)
         extract_document(conn, seeded, model, embeddings)
         assert FactRepository(conn).read_for_document(seeded.id) == []

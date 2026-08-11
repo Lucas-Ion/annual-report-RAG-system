@@ -1,9 +1,4 @@
-"""The persistence layer.
-
-Two properties matter more than the CRUD: that deleting a document takes its
-embeddings with it, and that a failed transaction leaves nothing behind. Both
-fail silently if they break, which is why they are tested rather than assumed.
-"""
+"""The persistence layer."""
 
 from __future__ import annotations
 
@@ -36,17 +31,12 @@ from tests.conftest import ident
 
 class TestConnection:
     def test_foreign_keys_are_enforced(self, conn):
-        """Off by default in SQLite. Without it every ON DELETE CASCADE in the
-        schema is decoration and orphans accumulate silently."""
         assert conn.execute("PRAGMA foreign_keys").fetchone()[0] == 1
 
     def test_write_ahead_logging_is_on(self, conn):
-        """Otherwise a running ingest blocks every read and the interface
-        appears to hang for the length of a parse."""
         assert conn.execute("PRAGMA journal_mode").fetchone()[0].lower() == "wal"
 
     def test_the_schema_is_idempotent(self, conn):
-        """Applied on every startup, which is what replaces migrations."""
         from app.db.connection import _SCHEMA_PATH
 
         conn.executescript(_SCHEMA_PATH.read_text())
@@ -145,8 +135,6 @@ class TestBlocks:
         assert stored.bbox == (10.0, 20.0, 30.0, 40.0)
 
     def test_a_generator_is_not_consumed_before_it_is_stored(self, conn, document):
-        """create_all accepts any iterable. Walking it twice would silently
-        store the rows and return nothing."""
         rows = (
             Block(document_id=document.id, seq=i, page_no=1, label="text", text=f"b{i}")
             for i in range(3)
@@ -160,14 +148,10 @@ class TestChunksAndSearch:
         assert hits and "workforce" in hits[0].chunk.text
 
     def test_keyword_scores_are_higher_is_better(self, conn, seeded):
-        """BM25 comes out of SQLite negative, with more negative meaning
-        better. The sign is flipped so every search agrees."""
         hits = ChunkRepository(conn).read_by_keywords("workforce")
         assert hits[0].score > 0
 
     def test_question_words_do_not_decide_the_ranking(self, conn, seeded):
-        """Joined by OR, stopwords let an irrelevant chunk win on 'how' and
-        'much' alone."""
         from app.db.repositories.chunks import to_match_expression
 
         assert to_match_expression("How many employees") == '"employees"'
@@ -181,8 +165,6 @@ class TestChunksAndSearch:
         "junk", ['"" AND NEAR(', "a OR b) NOT", "***", 'NEAR/2 "x', "^ * ()"]
     )
     def test_malformed_input_never_raises(self, conn, seeded, junk):
-        """FTS5 has its own query language, so raw user text is a syntax error
-        waiting to happen."""
         ChunkRepository(conn).read_by_keywords(junk)
 
     def test_vector_search_returns_the_nearest_chunk(self, conn, seeded, embeddings):
@@ -209,9 +191,6 @@ class TestCascades:
             assert conn.execute(f"SELECT count(*) n FROM {table}").fetchone()["n"] == 0
 
     def test_deleting_a_document_removes_its_embeddings(self, conn, seeded):
-        """The one the database cannot do for you. A vec0 table cannot declare
-        a foreign key, so nothing cascades into it and orphaned vectors would
-        keep being returned by searches."""
         with transaction(conn):
             DocumentRepository(conn).delete(seeded)
         assert conn.execute("SELECT count(*) n FROM chunk_vectors").fetchone()["n"] == 0
@@ -249,7 +228,6 @@ class TestChat:
         ]
 
     def test_the_verified_flag_survives_as_a_boolean(self, conn, seeded):
-        """SQLite has no boolean type, so it is stored as 0 or 1."""
         conversations, messages = ConversationRepository(conn), MessageRepository(conn)
         chunk = ChunkRepository(conn).read_for_document(seeded.id)[0]
         with transaction(conn):
@@ -272,14 +250,11 @@ class TestChat:
 
 class TestFacts:
     def test_a_field_can_be_compared_across_reports(self, conn, seeded):
-        """The reason extracted_facts stores a key rather than a column per
-        field: five companies side by side is one query."""
         assert [f.value_raw for f in FactRepository(conn).read_by_field("fte")] == [
             "12,345"
         ]
 
     def test_several_values_for_one_field_are_allowed(self, conn, seeded):
-        """A company has one headcount and many sustainability goals."""
         facts = FactRepository(conn)
         with transaction(conn):
             for i in range(3):

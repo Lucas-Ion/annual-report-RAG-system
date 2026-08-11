@@ -7,9 +7,6 @@ dependencies = [
     "pymupdf>=1.24.0",
     "docling>=2.0.0",
     "sqlite-vec>=0.1.6",
-    # Pulled in by docling, named here only so the Windows CUDA source below
-    # can attach to it. uv applies [tool.uv.sources] to the project's own
-    # dependencies, so a transitive package cannot be redirected.
     "torch>=2.7.0",
     "torchvision>=0.22.0",
     "sentence-transformers>=3.0.0",
@@ -21,8 +18,6 @@ dependencies = [
     "python-multipart>=0.0.9",
 ]
 
-# Tools needed to work on the project but not to run it. Installed by
-# `uv sync`, left out of anything that only needs to run the application.
 [dependency-groups]
 dev = [
     "pyright>=1.1.390",
@@ -32,23 +27,8 @@ dev = [
 ]
 
 [tool.uv]
-# This is an application, not a distributable package.
 package = false
 
-# PyPI's torch wheels for Windows are CPU only, so parsing on a machine with a
-# real GPU would silently run on the processor instead. The CUDA builds live on
-# PyTorch's own index, and pinning that here rather than installing it by hand
-# is what makes it survive: `uv run` reconciles the environment against the
-# lockfile before every command, so a manual install gets undone on the next
-# invocation.
-#
-# CUDA 12.8 is the floor for Blackwell cards such as the RTX 5090, whose
-# compute capability older builds do not know about. They report the GPU as
-# available and then fail at the first kernel launch.
-#
-# Windows only. macOS and Linux keep the ordinary wheels, which is why the
-# marker is here: macOS has no CUDA at all, and the Linux wheels on PyPI
-# already carry it.
 [[tool.uv.index]]
 name = "pytorch-cu128"
 url = "https://download.pytorch.org/whl/cu128"
@@ -59,19 +39,13 @@ torch = [{ index = "pytorch-cu128", marker = "sys_platform == 'win32'" }]
 torchvision = [{ index = "pytorch-cu128", marker = "sys_platform == 'win32'" }]
 
 [tool.pyright]
-# Point the type checker at the same interpreter uv builds, so it sees the
-# installed dependencies. Without this it falls back to a bare system Python
-# and reports every third party import as missing.
 venvPath = "."
 venv = ".venv"
 pythonVersion = "3.13"
 typeCheckingMode = "standard"
-include = ["app", "scripts", "tests"]
+include = ["app", "tests"]
 
 [tool.pytest.ini_options]
-# The repository root on the import path, so `import app` works without the
-# project being installed. It is an application, not a package, so there is
-# nothing to install.
 pythonpath = ["."]
 testpaths = ["tests"]
 addopts = "-q --strict-markers"
@@ -80,8 +54,4 @@ addopts = "-q --strict-markers"
 target-version = "py313"
 
 [tool.ruff.lint]
-# E and F are the defaults, roughly pycodestyle and pyflakes. The rest are
-# worth the noise: I sorts imports, UP flags syntax that a newer Python does
-# better, and B catches the bugs that are legal Python but almost never meant,
-# such as a mutable default argument.
 select = ["E", "F", "I", "UP", "B"]

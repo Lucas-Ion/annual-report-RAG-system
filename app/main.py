@@ -1,11 +1,6 @@
 """The application factory and its entry point.
 
     uv run uvicorn app.main:app --reload
-
-Deliberately small. Its whole job is to load the environment, make sure the
-database exists, wire up templates and static files, and attach the routers.
-Anything with a decision in it lives somewhere that can be tested without an
-HTTP client.
 """
 
 from __future__ import annotations
@@ -25,17 +20,15 @@ STATIC = HERE / "static"
 TEMPLATES = HERE / "templates"
 
 
+def asset(path: str) -> str:
+    target = STATIC / path
+    if not target.is_file():
+        return f"/static/{path}"
+    return f"/static/{path}?v={int(target.stat().st_mtime)}"
+
+
 def create_app() -> FastAPI:
-    """Build the application.
-
-    Returns:
-        A configured FastAPI instance.
-    """
     load_environment()
-
-    # Applying the schema on startup is what lets a fresh checkout run without
-    # a setup step. Every statement is guarded by IF NOT EXISTS, so against the
-    # seeded database that ships with the repository this does nothing at all.
     init_db().close()
 
     application = FastAPI(
@@ -45,7 +38,9 @@ def create_app() -> FastAPI:
         ),
         version="0.1.0",
     )
-    application.state.templates = Jinja2Templates(directory=str(TEMPLATES))
+    templates = Jinja2Templates(directory=str(TEMPLATES))
+    templates.env.globals["asset"] = asset
+    application.state.templates = templates
     application.mount("/static", StaticFiles(directory=str(STATIC)), name="static")
     application.include_router(pages.router)
     application.include_router(api.router)
@@ -53,11 +48,6 @@ def create_app() -> FastAPI:
 
     @application.get("/healthz", include_in_schema=False)
     def healthz() -> dict[str, object]:
-        """Report that the process is up and where its database is.
-
-        Returns:
-            A small status object.
-        """
         path = database_path()
         return {
             "ok": True,

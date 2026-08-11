@@ -4,20 +4,6 @@
 {% block main_class %}chat-layout{% endblock %}
 {% block content %}
 <aside class="rail">
-  <div class="grid gap">
-    <label class="label" for="scope">Scope</label>
-    <select class="select" id="scope">
-      <option value="">All reports</option>
-      {% for document in documents %}
-        <option value="{{ document.id }}">{{ document.company }} {{ document.year }}</option>
-      {% endfor %}
-    </select>
-    <p class="hint">
-      Naming a company in the question narrows it automatically, so this is
-      only needed to override that.
-    </p>
-  </div>
-
   {% if conversations %}
   <p class="eyebrow">Recent</p>
   <ul class="threads">
@@ -26,12 +12,21 @@
         data-id="{{ item.id }}">
       <a class="btn" data-variant="{{ 'secondary' if conversation and conversation.id == item.id else 'ghost' }}"
          data-size="sm" href="/chat?conversation={{ item.id }}">{{ item.title or 'Untitled' }}</a>
-      <button class="btn rename" data-variant="ghost" data-size="icon"
-              title="Rename" aria-label="Rename this conversation">
-        <svg xmlns="http://www.w3.org/2000/svg" width="13" height="13" viewBox="0 0 24 24"
-             fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"
-             stroke-linejoin="round"><path d="M12 20h9M16.5 3.5a2.1 2.1 0 0 1 3 3L7 19l-4 1 1-4Z"/></svg>
-      </button>
+      <span class="thread-actions">
+        <button class="btn rename" data-variant="ghost" data-size="icon"
+                title="Rename" aria-label="Rename this conversation">
+          <svg xmlns="http://www.w3.org/2000/svg" width="13" height="13" viewBox="0 0 24 24"
+               fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"
+               stroke-linejoin="round"><path d="M12 20h9M16.5 3.5a2.1 2.1 0 0 1 3 3L7 19l-4 1 1-4Z"/></svg>
+        </button>
+        <button class="btn remove-thread" data-variant="ghost" data-size="icon"
+                data-title="{{ item.title or 'Untitled' }}"
+                title="Delete" aria-label="Delete this conversation">
+          <svg xmlns="http://www.w3.org/2000/svg" width="13" height="13" viewBox="0 0 24 24"
+               fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"
+               stroke-linejoin="round"><path d="M3 6h18M8 6V4a1 1 0 0 1 1-1h6a1 1 0 0 1 1 1v2m3 0v14a2 2 0 0 1-2 2H7a2 2 0 0 1-2-2V6M10 11v6M14 11v6"/></svg>
+        </button>
+      </span>
     </li>
     {% endfor %}
   </ul>
@@ -56,9 +51,7 @@
     </div>
   </div>
   {% endif %}
-  {# Rendered by chat.js from the conversation endpoint, so that a reopened
-     thread gets the same citation badges and source list as a live one rather
-     than the raw markers. #}
+
 </section>
 
 <form class="composer" id="composer" autocomplete="off">
@@ -68,4 +61,4 @@
 </form>
 {% endblock %}
 
-{% block scripts %}<script src="/static/js/chat.js"></script>{% endblock %}
+{% block scripts %}<script src="{{ asset('js/chat.js') }}"></script>{% endblock %}
