@@ -15,7 +15,9 @@ side across all reports, and a streaming chat interface.
 
 Python 3.13, provided by `uv`. Nothing else needs to be installed. 
 
-If `uv` is not present:
+If `uv` is not present please follow this installation steps here: https://docs.astral.sh/uv/getting-started/installation/
+
+or use:
 
 ```
 pip install uv
@@ -24,8 +26,10 @@ pip install uv
 ### Install and run
 
 ```bash
+uv python install 3.13
+uv venv --managed-python --python 3.13
 uv sync
-uv run uvicorn app.main:app --reload
+uv run uvicorn app.main:app
 ```
 
 The application is then at `http://127.0.0.1:8000`.
